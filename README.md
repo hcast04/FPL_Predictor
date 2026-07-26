@@ -42,7 +42,7 @@ The analysis is rerun before every Gameweek deadline. Only the immediate recomme
 
 1. Create and activate a Python environment.
 2. Install the required packages.
-3. Open `fpl_predictor_v1_0_1_ready.ipynb`.
+3. Open `fpl_predictor.ipynb`.
 4. Run the notebook from the beginning.
 5. Run the full walk-forward validation in Section 11 at least once.
 6. Use Section 12 for the final Gameweek recommendation.
@@ -87,7 +87,7 @@ jupyter notebook
 Then open:
 
 ```text
-fpl_predictor_v1_0_1_ready.ipynb
+fpl_predictor.ipynb
 ```
 
 The notebook includes an environment preflight check and raises a clear error when a required package or incompatible runtime is detected.
@@ -100,7 +100,7 @@ The project deliberately keeps the number of files small.
 
 ```text
 fpl_predictor/
-├── fpl_predictor_v1_0_1_ready.ipynb
+├── fpl_predictor.ipynb
 ├── README.md
 ├── data/
 │   ├── historical_fpl.csv.gz
@@ -111,7 +111,7 @@ fpl_predictor/
 
 ### Files
 
-`fpl_predictor_v1_0_1_ready.ipynb`  
+`fpl_predictor.ipynb`  
 Contains the complete data, modelling, optimisation, validation and weekly recommendation workflow.
 
 `data/historical_fpl.csv.gz`  
@@ -361,13 +361,11 @@ Expected minutes if appearing as a substitute
 
 The final expectation is:
 
-\[
-E[\text{minutes}]
-=
-P(\text{start})E[\text{minutes}\mid\text{start}]
-+
-P(\text{sub appearance})E[\text{minutes}\mid\text{sub appearance}]
-\]
+```text
+Expected minutes
+= P(start) × E(minutes | start)
++ P(substitute appearance) × E(minutes | substitute appearance)
+```
 
 The probabilities are reconciled so that:
 
@@ -511,11 +509,11 @@ Adds one extra expected copy of the captain’s score beyond normal captaincy.
 
 Compares:
 
-\[
-E[\text{all 15 players counting}]
--
-E[\text{normal score with automatic substitutions}]
-\]
+```text
+Bench Boost uplift
+= E(all 15 players counting)
+- E(normal score with automatic substitutions)
+```
 
 #### Free Hit
 
