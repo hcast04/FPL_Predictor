@@ -1,0 +1,276 @@
+{
+  "summary": {
+    "generated_at_utc": "2026-07-26T23:02:52.927940+00:00",
+    "mode": "Initial squad selection",
+    "gameweek": 1,
+    "deadline_spain": "2026-08-21T19:30:00+02:00",
+    "policy": "greedy_1gw_no_hits",
+    "policy_source": "Section 11 walk-forward selection",
+    "planning_horizon": 1,
+    "primary_action": "Select optimised initial squad",
+    "normal_transfer_action": "Select optimised initial squad",
+    "chip_action": "Save all chips",
+    "captain": "B.Fernandes",
+    "vice_captain": "Gabriel",
+    "expected_current_score": 45.495587216917706,
+    "current_hit_cost": 0.0,
+    "bank_after_normal_action": 0.0,
+    "gain_vs_roll_objective": null,
+    "decision_confidence": "Not assessed",
+    "objective_gap_to_second_action": null,
+    "data_fresh": true,
+    "warnings": [
+      "The strongest raw chip candidate was blocked by the production readiness gate."
+    ]
+  },
+  "starting_xi": [
+    {
+      "position": "GK",
+      "web_name": "Lammens",
+      "team_short_name": "MUN",
+      "fixtures": "HUL (A)",
+      "expected_minutes": 87.03118840695916,
+      "appearance_probability": 0.9716551924874367,
+      "expected_points": 3.528166465426973,
+      "role": ""
+    },
+    {
+      "position": "DEF",
+      "web_name": "Gabriel",
+      "team_short_name": "ARS",
+      "fixtures": "COV (H)",
+      "expected_minutes": 84.81335732601667,
+      "appearance_probability": 0.9761216159928785,
+      "expected_points": 3.95061550560298,
+      "role": "VC"
+    },
+    {
+      "position": "DEF",
+      "web_name": "Maguire",
+      "team_short_name": "MUN",
+      "fixtures": "HUL (A)",
+      "expected_minutes": 83.98731826670513,
+      "appearance_probability": 0.9628477243993044,
+      "expected_points": 3.627324462362954,
+      "role": ""
+    },
+    {
+      "position": "DEF",
+      "web_name": "Milenkovi\u0107",
+      "team_short_name": "NFO",
+      "fixtures": "LEE (H)",
+      "expected_minutes": 87.37693986471922,
+      "appearance_probability": 0.98321856169747,
+      "expected_points": 3.5849925925208264,
+      "role": ""
+    },
+    {
+      "position": "MID",
+      "web_name": "B.Fernandes",
+      "team_short_name": "MUN",
+      "fixtures": "HUL (A)",
+      "expected_minutes": 86.31960468370687,
+      "appearance_probability": 0.983800697959275,
+      "expected_points": 4.098961545039196,
+      "role": "C"
+    },
+    {
+      "position": "MID",
+      "web_name": "E.Le F\u00e9e",
+      "team_short_name": "SUN",
+      "fixtures": "IPS (A)",
+      "expected_minutes": 83.23334276635758,
+      "appearance_probability": 0.9817119107306409,
+      "expected_points": 3.56327184936526,
+      "role": ""
+    },
+    {
+      "position": "MID",
+      "web_name": "Gibbs-White",
+      "team_short_name": "NFO",
+      "fixtures": "LEE (H)",
+      "expected_minutes": 82.14320873000223,
+      "appearance_probability": 0.9737425750778458,
+      "expected_points": 3.543261038327835,
+      "role": ""
+    },
+    {
+      "position": "MID",
+      "web_name": "Gro\u00df",
+      "team_short_name": "BHA",
+      "fixtures": "AVL (H)",
+      "expected_minutes": 85.07730508130193,
+      "appearance_probability": 0.9770980508421433,
+      "expected_points": 3.5409265279397135,
+      "role": ""
+    },
+    {
+      "position": "FWD",
+      "web_name": "Havertz",
+      "team_short_name": "ARS",
+      "fixtures": "COV (H)",
+      "expected_minutes": 73.48427621641606,
+      "appearance_probability": 0.977823993608291,
+      "expected_points": 3.751150927056598,
+      "role": ""
+    },
+    {
+      "position": "FWD",
+      "web_name": "Watkins",
+      "team_short_name": "AVL",
+      "fixtures": "BHA (A)",
+      "expected_minutes": 83.81570580270231,
+      "appearance_probability": 0.986934843191694,
+      "expected_points": 3.717373650093741,
+      "role": ""
+    },
+    {
+      "position": "FWD",
+      "web_name": "Thiago",
+      "team_short_name": "BRE",
+      "fixtures": "TOT (H)",
+      "expected_minutes": 82.72224883708253,
+      "appearance_probability": 0.9739347829743658,
+      "expected_points": 3.542029638166558,
+      "role": ""
+    }
+  ],
+  "bench": [
+    {
+      "bench_slot": 1,
+      "position": "MID",
+      "web_name": "Foden",
+      "team_short_name": "MCI",
+      "fixtures": "BOU (H)",
+      "expected_minutes": 75.48679848167849,
+      "appearance_probability": 0.9811809224814366,
+      "expected_points": 3.486691141567011
+    },
+    {
+      "bench_slot": 2,
+      "position": "DEF",
+      "web_name": "N.Williams",
+      "team_short_name": "NFO",
+      "fixtures": "LEE (H)",
+      "expected_minutes": 86.35164872612737,
+      "appearance_probability": 0.9785630349229664,
+      "expected_points": 3.469525086533709
+    },
+    {
+      "bench_slot": 3,
+      "position": "DEF",
+      "web_name": "Hume",
+      "team_short_name": "SUN",
+      "fixtures": "IPS (A)",
+      "expected_minutes": 85.83325807439995,
+      "appearance_probability": 0.982628999259151,
+      "expected_points": 3.416806516815298
+    },
+    {
+      "bench_slot": "GK",
+      "position": "GK",
+      "web_name": "Roefs",
+      "team_short_name": "SUN",
+      "fixtures": "IPS (A)",
+      "expected_minutes": 85.68129164602203,
+      "appearance_probability": 0.9598638494726307,
+      "expected_points": 3.3618249446357833
+    }
+  ],
+  "transfer_alternatives": [
+    {
+      "current_action": "Select optimised initial squad",
+      "transfer_count": 0,
+      "current_hit_cost": 0.0,
+      "bank_after": 0.0,
+      "path_objective": 45.70982077592801
+    }
+  ],
+  "rolling_plan": [
+    {
+      "gameweek": 1,
+      "transfers": "Initial squad selected",
+      "transfer_count": 0,
+      "free_transfers_before": 1,
+      "free_transfers_after": 2,
+      "hit_cost": 0.0,
+      "bank_after": 0.0,
+      "captain": "B.Fernandes",
+      "projected_score_after_hits": 45.70982077592801
+    }
+  ],
+  "chip_comparison": [
+    {
+      "chip": "triple_captain",
+      "eligible_now": true,
+      "current_uplift": 4.1629587588612305,
+      "minimum_uplift": 7.0,
+      "best_horizon_uplift": 4.1629587588612305,
+      "current_vs_horizon_best": 1.0,
+      "passes_use_now_rule": false,
+      "normalised_strength": 0.5947083941230329
+    },
+    {
+      "chip": "bench_boost",
+      "eligible_now": true,
+      "current_uplift": 12.850293433397958,
+      "minimum_uplift": 9.0,
+      "best_horizon_uplift": 12.850293433397958,
+      "current_vs_horizon_best": 1.0,
+      "passes_use_now_rule": true,
+      "normalised_strength": 1.427810381488662
+    },
+    {
+      "chip": "free_hit",
+      "eligible_now": false,
+      "current_uplift": NaN,
+      "minimum_uplift": 8.0,
+      "best_horizon_uplift": NaN,
+      "current_vs_horizon_best": NaN,
+      "passes_use_now_rule": false,
+      "normalised_strength": NaN
+    },
+    {
+      "chip": "wildcard",
+      "eligible_now": false,
+      "current_uplift": NaN,
+      "minimum_uplift": 10.0,
+      "best_horizon_uplift": NaN,
+      "current_vs_horizon_best": NaN,
+      "passes_use_now_rule": false,
+      "normalised_strength": NaN
+    }
+  ],
+  "raw_chip_recommendation": {
+    "gameweek": 1,
+    "action": "Play Bench Boost",
+    "chip": "bench_boost",
+    "expected_uplift": 12.850293433397958,
+    "reason": "The chip clears its uplift threshold and is sufficiently close to its best opportunity in the current horizon."
+  },
+  "chip_readiness_gate": {
+    "passed": false,
+    "reason": "Bench Boost is the strongest current six-Gameweek candidate, but the explicit horizon does not show the required double Gameweek, expiry pressure or exceptional bench uplift. Preserve the chip and rerun before the next deadline."
+  },
+  "best_chip_opportunities": [
+    {
+      "chip": "triple_captain",
+      "best_gameweek_in_horizon": 1,
+      "best_uplift_in_horizon": 4.1629587588612305
+    },
+    {
+      "chip": "bench_boost",
+      "best_gameweek_in_horizon": 1,
+      "best_uplift_in_horizon": 12.850293433397958
+    }
+  ],
+  "freshness_audit": {
+    "checked_at_utc": "2026-07-26T23:02:48.852069+00:00",
+    "latest_next_gameweek": 1,
+    "projected_next_gameweek": 1,
+    "changed_player_rows": 0,
+    "changed_fixture_rows": 0,
+    "is_fresh": true
+  },
+  "projection_overrides": []
+}
