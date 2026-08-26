@@ -1,276 +1,727 @@
 {
   "summary": {
-    "generated_at_utc": "2026-07-26T23:02:52.927940+00:00",
-    "mode": "Initial squad selection",
-    "gameweek": 1,
-    "deadline_spain": "2026-08-21T19:30:00+02:00",
-    "policy": "greedy_1gw_no_hits",
+    "generated_at_utc": "2026-08-26T10:42:05.816566+00:00",
+    "mode": "Live in-season squad",
+    "gameweek": 2,
+    "deadline_spain": "2026-08-28T19:30:00+02:00",
+    "policy": "rolling_6gw_hits",
     "policy_source": "Section 11 walk-forward selection",
-    "planning_horizon": 1,
-    "primary_action": "Select optimised initial squad",
-    "normal_transfer_action": "Select optimised initial squad",
+    "planning_horizon": 6,
+    "primary_action": "Enzo \u2192 Gakpo",
+    "normal_transfer_action": "Enzo \u2192 Gakpo",
     "chip_action": "Save all chips",
-    "captain": "B.Fernandes",
-    "vice_captain": "Gabriel",
-    "expected_current_score": 45.495587216917706,
+    "captain": "Maguire",
+    "vice_captain": "B.Fernandes",
+    "captain_confidence": "Low",
+    "captain_xp_gap_vs_best_other": -0.11621588524349447,
+    "execution_policy": "baseline",
+    "execution_policy_source": "forced off",
+    "expected_current_score": 45.10514487531209,
     "current_hit_cost": 0.0,
-    "bank_after_normal_action": 0.0,
-    "gain_vs_roll_objective": null,
-    "decision_confidence": "Not assessed",
-    "objective_gap_to_second_action": null,
+    "bank_after_normal_action": 0.5,
+    "gain_vs_roll_objective": 2.69980551464036,
+    "decision_confidence": "Low",
+    "objective_gap_to_second_action": 0.07570219486305518,
     "data_fresh": true,
+    "autonomous_mode": true,
+    "xp_validation_artifact_loaded": true,
+    "xp_calibration_applied": false,
+    "premium_attacker_adjustment_applied": false,
     "warnings": [
-      "The strongest raw chip candidate was blocked by the production readiness gate."
-    ]
+      "The strongest raw chip candidate was blocked by the production readiness gate.",
+      "One or more >=\u00a36.0m sparse-history players lack an external prior; the empirical position/price fallback is being used automatically."
+    ],
+    "latest_completed_gameweek": 1,
+    "latest_stats_gameweek_loaded": 1,
+    "latest_gameweek_stats_used": true,
+    "early_season_shrinkage_enabled": true,
+    "early_season_shrinkage_ready": true,
+    "early_season_sparse_players_active": 106,
+    "early_season_sparse_teams_active": 2,
+    "live_feature_signature": "a484a7ca8bd2dcea3d3a"
   },
+  "autonomous_pending_state": {
+    "gameweek": 2,
+    "created_at_utc": "2026-08-26T10:42:05.801374+00:00",
+    "chip": null,
+    "verification_squad_ids": [
+      26,
+      55,
+      68,
+      109,
+      154,
+      346,
+      356,
+      367,
+      368,
+      412,
+      418,
+      426,
+      445,
+      447,
+      471
+    ],
+    "permanent_squad_ids_after": [
+      26,
+      55,
+      68,
+      109,
+      154,
+      346,
+      356,
+      367,
+      368,
+      412,
+      418,
+      426,
+      445,
+      447,
+      471
+    ],
+    "purchase_prices_after": {
+      "26": 7.5,
+      "55": 8.0,
+      "68": 6.0,
+      "109": 4.5,
+      "154": 9.5,
+      "346": 6.0,
+      "356": 6.5,
+      "368": 7.0,
+      "412": 5.0,
+      "418": 5.0,
+      "426": 12.0,
+      "445": 5.0,
+      "447": 5.0,
+      "471": 5.5,
+      "367": 7.0
+    },
+    "bank_after": 0.5,
+    "free_transfers_after": 1,
+    "chips_available_after": {
+      "triple_captain": true,
+      "bench_boost": true,
+      "free_hit": true,
+      "wildcard": true
+    },
+    "last_free_hit_gameweek_after": null
+  },
+  "selected_vs_omitted": [
+    {
+      "selected": "Havertz",
+      "position": "FWD",
+      "selected_price": 7.5,
+      "selected_gw_xp": 3.4192060069833934,
+      "selected_horizon_xp": 20.99576247413375,
+      "best_omitted": "Evanilson",
+      "omitted_price": 6.0,
+      "omitted_gw_xp": 3.093768953665417,
+      "omitted_horizon_xp": 18.10263686168035
+    },
+    {
+      "selected": "Watkins",
+      "position": "FWD",
+      "selected_price": 8.0,
+      "selected_gw_xp": 1.6153149038659445,
+      "selected_horizon_xp": 9.845668914016928,
+      "best_omitted": "Thiago",
+      "omitted_price": 8.0,
+      "omitted_gw_xp": 3.0289305791469383,
+      "omitted_horizon_xp": 18.55326415774121
+    },
+    {
+      "selected": "Tavernier",
+      "position": "MID",
+      "selected_price": 6.0,
+      "selected_gw_xp": 3.5363059266861305,
+      "selected_horizon_xp": 20.685561242992375,
+      "best_omitted": "Xhaka",
+      "omitted_price": 5.5,
+      "omitted_gw_xp": 3.3702496787278347,
+      "omitted_horizon_xp": 19.33858307980735
+    },
+    {
+      "selected": "Verbruggen",
+      "position": "GK",
+      "selected_price": 4.5,
+      "selected_gw_xp": 3.071859334060593,
+      "selected_horizon_xp": 18.736842825945715,
+      "best_omitted": "Leno",
+      "omitted_price": 4.5,
+      "omitted_gw_xp": 3.064705327602248,
+      "omitted_horizon_xp": 18.53065596751699
+    },
+    {
+      "selected": "Palmer",
+      "position": "MID",
+      "selected_price": 9.5,
+      "selected_gw_xp": 3.4473768292137965,
+      "selected_horizon_xp": 20.1988780744029,
+      "best_omitted": "Mbeumo",
+      "omitted_price": 8.0,
+      "omitted_gw_xp": 4.062512403960306,
+      "omitted_horizon_xp": 22.638303427614677
+    },
+    {
+      "selected": "Calvert-Lewin",
+      "position": "FWD",
+      "selected_price": 6.0,
+      "selected_gw_xp": 3.606697285040753,
+      "selected_horizon_xp": 21.137286867297902,
+      "best_omitted": "Evanilson",
+      "omitted_price": 6.0,
+      "omitted_gw_xp": 3.093768953665417,
+      "omitted_horizon_xp": 18.10263686168035
+    },
+    {
+      "selected": "Virgil",
+      "position": "DEF",
+      "selected_price": 6.5,
+      "selected_gw_xp": 3.4550830957150866,
+      "selected_horizon_xp": 20.05377239918469,
+      "best_omitted": "Gu\u00e9hi",
+      "omitted_price": 6.0,
+      "omitted_gw_xp": 3.386632486039709,
+      "omitted_horizon_xp": 20.599281656963242
+    },
+    {
+      "selected": "Gakpo",
+      "position": "MID",
+      "selected_price": 7.0,
+      "selected_gw_xp": 3.5648272487484083,
+      "selected_horizon_xp": 20.946257365283262,
+      "best_omitted": "Foden",
+      "omitted_price": 7.0,
+      "omitted_gw_xp": 3.1711366569833426,
+      "omitted_horizon_xp": 19.363184573932664
+    },
+    {
+      "selected": "Szoboszlai",
+      "position": "MID",
+      "selected_price": 7.0,
+      "selected_gw_xp": 3.5813944809129197,
+      "selected_horizon_xp": 21.047245058371026,
+      "best_omitted": "Foden",
+      "omitted_price": 7.0,
+      "omitted_gw_xp": 3.1711366569833426,
+      "omitted_horizon_xp": 19.363184573932664
+    },
+    {
+      "selected": "Lammens",
+      "position": "GK",
+      "selected_price": 5.0,
+      "selected_gw_xp": 3.5859340012249588,
+      "selected_horizon_xp": 19.113190682870403,
+      "best_omitted": "Leno",
+      "omitted_price": 4.5,
+      "omitted_gw_xp": 3.064705327602248,
+      "omitted_horizon_xp": 18.53065596751699
+    },
+    {
+      "selected": "Maguire",
+      "position": "DEF",
+      "selected_price": 5.0,
+      "selected_gw_xp": 3.6512183625872856,
+      "selected_horizon_xp": 18.823944727817803,
+      "best_omitted": "Bijol",
+      "omitted_price": 5.0,
+      "omitted_gw_xp": 3.3002985881853486,
+      "omitted_horizon_xp": 18.79874513480365
+    },
+    {
+      "selected": "B.Fernandes",
+      "position": "MID",
+      "selected_price": 12.0,
+      "selected_gw_xp": 3.76743424783078,
+      "selected_horizon_xp": 21.042751934807146,
+      "best_omitted": "Mbeumo",
+      "omitted_price": 8.0,
+      "omitted_gw_xp": 4.062512403960306,
+      "omitted_horizon_xp": 22.638303427614677
+    },
+    {
+      "selected": "Thiaw",
+      "position": "DEF",
+      "selected_price": 5.0,
+      "selected_gw_xp": 3.192821720439991,
+      "selected_horizon_xp": 19.591555576475443,
+      "best_omitted": "Bijol",
+      "omitted_price": 5.0,
+      "omitted_gw_xp": 3.3002985881853486,
+      "omitted_horizon_xp": 18.79874513480365
+    },
+    {
+      "selected": "Botman",
+      "position": "DEF",
+      "selected_price": 5.0,
+      "selected_gw_xp": 3.480206850670091,
+      "selected_horizon_xp": 21.30401434740521,
+      "best_omitted": "Bijol",
+      "omitted_price": 5.0,
+      "omitted_gw_xp": 3.3002985881853486,
+      "omitted_horizon_xp": 18.79874513480365
+    },
+    {
+      "selected": "Milenkovi\u0107",
+      "position": "DEF",
+      "selected_price": 5.5,
+      "selected_gw_xp": 2.6063633794431498,
+      "selected_horizon_xp": 17.636571744686783,
+      "best_omitted": "Collins",
+      "omitted_price": 5.5,
+      "omitted_gw_xp": 3.2616847882165354,
+      "omitted_horizon_xp": 19.28648400222366
+    }
+  ],
+  "opening_squad_alternatives": [],
+  "opening_bench_sensitivity": [],
   "starting_xi": [
     {
       "position": "GK",
       "web_name": "Lammens",
       "team_short_name": "MUN",
-      "fixtures": "HUL (A)",
-      "expected_minutes": 87.03118840695916,
-      "appearance_probability": 0.9716551924874367,
-      "expected_points": 3.528166465426973,
+      "fixtures": "IPS (H)",
+      "expected_minutes": 83.94190943658971,
+      "appearance_probability": 0.9326878826287746,
+      "expected_points": 3.5859340012249588,
       "role": ""
-    },
-    {
-      "position": "DEF",
-      "web_name": "Gabriel",
-      "team_short_name": "ARS",
-      "fixtures": "COV (H)",
-      "expected_minutes": 84.81335732601667,
-      "appearance_probability": 0.9761216159928785,
-      "expected_points": 3.95061550560298,
-      "role": "VC"
     },
     {
       "position": "DEF",
       "web_name": "Maguire",
       "team_short_name": "MUN",
-      "fixtures": "HUL (A)",
-      "expected_minutes": 83.98731826670513,
-      "appearance_probability": 0.9628477243993044,
-      "expected_points": 3.627324462362954,
+      "fixtures": "IPS (H)",
+      "expected_minutes": 76.83849192462456,
+      "appearance_probability": 0.9064090857248247,
+      "expected_points": 3.6512183625872856,
+      "role": "C"
+    },
+    {
+      "position": "DEF",
+      "web_name": "Botman",
+      "team_short_name": "NEW",
+      "fixtures": "TOT (A)",
+      "expected_minutes": 79.99029356983228,
+      "appearance_probability": 0.9323718764106457,
+      "expected_points": 3.480206850670091,
       "role": ""
     },
     {
       "position": "DEF",
-      "web_name": "Milenkovi\u0107",
-      "team_short_name": "NFO",
-      "fixtures": "LEE (H)",
-      "expected_minutes": 87.37693986471922,
-      "appearance_probability": 0.98321856169747,
-      "expected_points": 3.5849925925208264,
+      "web_name": "Virgil",
+      "team_short_name": "LIV",
+      "fixtures": "NFO (H)",
+      "expected_minutes": 85.24697787241077,
+      "appearance_probability": 0.9536285586697394,
+      "expected_points": 3.4550830957150866,
       "role": ""
     },
     {
       "position": "MID",
       "web_name": "B.Fernandes",
       "team_short_name": "MUN",
-      "fixtures": "HUL (A)",
-      "expected_minutes": 86.31960468370687,
-      "appearance_probability": 0.983800697959275,
-      "expected_points": 4.098961545039196,
-      "role": "C"
+      "fixtures": "IPS (H)",
+      "expected_minutes": 79.95899026803457,
+      "appearance_probability": 0.9455293311765726,
+      "expected_points": 3.76743424783078,
+      "role": "VC"
     },
     {
       "position": "MID",
-      "web_name": "E.Le F\u00e9e",
-      "team_short_name": "SUN",
-      "fixtures": "IPS (A)",
-      "expected_minutes": 83.23334276635758,
-      "appearance_probability": 0.9817119107306409,
-      "expected_points": 3.56327184936526,
+      "web_name": "Szoboszlai",
+      "team_short_name": "LIV",
+      "fixtures": "NFO (H)",
+      "expected_minutes": 79.80612911389518,
+      "appearance_probability": 0.9560394880861589,
+      "expected_points": 3.5813944809129197,
       "role": ""
     },
     {
       "position": "MID",
-      "web_name": "Gibbs-White",
-      "team_short_name": "NFO",
-      "fixtures": "LEE (H)",
-      "expected_minutes": 82.14320873000223,
-      "appearance_probability": 0.9737425750778458,
-      "expected_points": 3.543261038327835,
+      "web_name": "Gakpo",
+      "team_short_name": "LIV",
+      "fixtures": "NFO (H)",
+      "expected_minutes": 76.56940118988526,
+      "appearance_probability": 0.9559853528927109,
+      "expected_points": 3.5648272487484083,
       "role": ""
     },
     {
       "position": "MID",
-      "web_name": "Gro\u00df",
-      "team_short_name": "BHA",
-      "fixtures": "AVL (H)",
-      "expected_minutes": 85.07730508130193,
-      "appearance_probability": 0.9770980508421433,
-      "expected_points": 3.5409265279397135,
+      "web_name": "Tavernier",
+      "team_short_name": "BOU",
+      "fixtures": "EVE (H)",
+      "expected_minutes": 78.21833836486286,
+      "appearance_probability": 0.9479176998751274,
+      "expected_points": 3.5363059266861305,
+      "role": ""
+    },
+    {
+      "position": "MID",
+      "web_name": "Palmer",
+      "team_short_name": "CHE",
+      "fixtures": "BHA (H)",
+      "expected_minutes": 73.19284241295352,
+      "appearance_probability": 0.924237457464115,
+      "expected_points": 3.4473768292137965,
+      "role": ""
+    },
+    {
+      "position": "FWD",
+      "web_name": "Calvert-Lewin",
+      "team_short_name": "LEE",
+      "fixtures": "BRE (H)",
+      "expected_minutes": 76.58138698149402,
+      "appearance_probability": 0.9464337361356115,
+      "expected_points": 3.606697285040753,
       "role": ""
     },
     {
       "position": "FWD",
       "web_name": "Havertz",
       "team_short_name": "ARS",
-      "fixtures": "COV (H)",
-      "expected_minutes": 73.48427621641606,
-      "appearance_probability": 0.977823993608291,
-      "expected_points": 3.751150927056598,
-      "role": ""
-    },
-    {
-      "position": "FWD",
-      "web_name": "Watkins",
-      "team_short_name": "AVL",
-      "fixtures": "BHA (A)",
-      "expected_minutes": 83.81570580270231,
-      "appearance_probability": 0.986934843191694,
-      "expected_points": 3.717373650093741,
-      "role": ""
-    },
-    {
-      "position": "FWD",
-      "web_name": "Thiago",
-      "team_short_name": "BRE",
-      "fixtures": "TOT (H)",
-      "expected_minutes": 82.72224883708253,
-      "appearance_probability": 0.9739347829743658,
-      "expected_points": 3.542029638166558,
+      "fixtures": "AVL (A)",
+      "expected_minutes": 67.89193062960582,
+      "appearance_probability": 0.9495244073163042,
+      "expected_points": 3.4192060069833934,
       "role": ""
     }
   ],
   "bench": [
     {
       "bench_slot": 1,
-      "position": "MID",
-      "web_name": "Foden",
-      "team_short_name": "MCI",
-      "fixtures": "BOU (H)",
-      "expected_minutes": 75.48679848167849,
-      "appearance_probability": 0.9811809224814366,
-      "expected_points": 3.486691141567011
+      "position": "DEF",
+      "web_name": "Thiaw",
+      "team_short_name": "NEW",
+      "fixtures": "TOT (A)",
+      "expected_minutes": 82.12880139763912,
+      "appearance_probability": 0.9555504560211677,
+      "expected_points": 3.192821720439991
     },
     {
       "bench_slot": 2,
       "position": "DEF",
-      "web_name": "N.Williams",
+      "web_name": "Milenkovi\u0107",
       "team_short_name": "NFO",
-      "fixtures": "LEE (H)",
-      "expected_minutes": 86.35164872612737,
-      "appearance_probability": 0.9785630349229664,
-      "expected_points": 3.469525086533709
+      "fixtures": "LIV (A)",
+      "expected_minutes": 83.80890355416972,
+      "appearance_probability": 0.9593302376658619,
+      "expected_points": 2.6063633794431498
     },
     {
       "bench_slot": 3,
-      "position": "DEF",
-      "web_name": "Hume",
-      "team_short_name": "SUN",
-      "fixtures": "IPS (A)",
-      "expected_minutes": 85.83325807439995,
-      "appearance_probability": 0.982628999259151,
-      "expected_points": 3.416806516815298
+      "position": "FWD",
+      "web_name": "Watkins",
+      "team_short_name": "AVL",
+      "fixtures": "ARS (H)",
+      "expected_minutes": 30.148625926749343,
+      "appearance_probability": 0.6160715197561649,
+      "expected_points": 1.6153149038659445
     },
     {
       "bench_slot": "GK",
       "position": "GK",
-      "web_name": "Roefs",
-      "team_short_name": "SUN",
-      "fixtures": "IPS (A)",
-      "expected_minutes": 85.68129164602203,
-      "appearance_probability": 0.9598638494726307,
-      "expected_points": 3.3618249446357833
+      "web_name": "Verbruggen",
+      "team_short_name": "BHA",
+      "fixtures": "CHE (A)",
+      "expected_minutes": 83.30838143163776,
+      "appearance_probability": 0.9256486825737529,
+      "expected_points": 3.071859334060593
     }
   ],
+  "captain_alternatives": [
+    {
+      "player_id": 426,
+      "web_name": "B.Fernandes",
+      "expected_points": 3.76743424783078,
+      "expected_minutes": 79.95899026803457,
+      "appearance_probability": 0.9455293311765726,
+      "no_appearance_probability": 0.05447066882342744,
+      "xp_gap_to_top": 0.0,
+      "within_captain_tie_band": true,
+      "selected": false
+    },
+    {
+      "player_id": 418,
+      "web_name": "Maguire",
+      "expected_points": 3.6512183625872856,
+      "expected_minutes": 76.83849192462456,
+      "appearance_probability": 0.9064090857248247,
+      "no_appearance_probability": 0.0935909142751753,
+      "xp_gap_to_top": 0.11621588524349447,
+      "within_captain_tie_band": false,
+      "selected": true
+    },
+    {
+      "player_id": 346,
+      "web_name": "Calvert-Lewin",
+      "expected_points": 3.606697285040753,
+      "expected_minutes": 76.58138698149402,
+      "appearance_probability": 0.9464337361356115,
+      "no_appearance_probability": 0.05356626386438845,
+      "xp_gap_to_top": 0.16073696279002725,
+      "within_captain_tie_band": false,
+      "selected": false
+    },
+    {
+      "player_id": 412,
+      "web_name": "Lammens",
+      "expected_points": 3.5859340012249588,
+      "expected_minutes": 83.94190943658971,
+      "appearance_probability": 0.9326878826287746,
+      "no_appearance_probability": 0.06731211737122544,
+      "xp_gap_to_top": 0.1815002466058213,
+      "within_captain_tie_band": false,
+      "selected": false
+    },
+    {
+      "player_id": 368,
+      "web_name": "Szoboszlai",
+      "expected_points": 3.5813944809129197,
+      "expected_minutes": 79.80612911389518,
+      "appearance_probability": 0.9560394880861589,
+      "no_appearance_probability": 0.043960511913841094,
+      "xp_gap_to_top": 0.1860397669178604,
+      "within_captain_tie_band": false,
+      "selected": false
+    },
+    {
+      "player_id": 367,
+      "web_name": "Gakpo",
+      "expected_points": 3.5648272487484083,
+      "expected_minutes": 76.56940118988526,
+      "appearance_probability": 0.9559853528927109,
+      "no_appearance_probability": 0.044014647107289084,
+      "xp_gap_to_top": 0.20260699908237179,
+      "within_captain_tie_band": false,
+      "selected": false
+    },
+    {
+      "player_id": 68,
+      "web_name": "Tavernier",
+      "expected_points": 3.5363059266861305,
+      "expected_minutes": 78.21833836486286,
+      "appearance_probability": 0.9479176998751274,
+      "no_appearance_probability": 0.05208230012487258,
+      "xp_gap_to_top": 0.23112832114464954,
+      "within_captain_tie_band": false,
+      "selected": false
+    },
+    {
+      "player_id": 447,
+      "web_name": "Botman",
+      "expected_points": 3.480206850670091,
+      "expected_minutes": 79.99029356983228,
+      "appearance_probability": 0.9323718764106457,
+      "no_appearance_probability": 0.06762812358935433,
+      "xp_gap_to_top": 0.2872273971606889,
+      "within_captain_tie_band": false,
+      "selected": false
+    }
+  ],
+  "execution_policy_validation": {
+    "approved": false,
+    "reason": "Execution-policy validation disabled for production. The prior v2.1.2 run reached the no-eligible-candidate branch, so no tested overlay cleared the historical activation gate.",
+    "active_policy": {
+      "name": "baseline",
+      "lineup_minutes_weight": 0.0,
+      "captain_tie_band": 0.0,
+      "captain_mode": "xp",
+      "vice_tie_band": 0.0
+    },
+    "source": "forced off",
+    "selected_gain_vs_baseline": 0.0
+  },
   "transfer_alternatives": [
     {
-      "current_action": "Select optimised initial squad",
+      "current_action": "Enzo \u2192 Gakpo",
+      "transfer_count": 1,
+      "current_hit_cost": 0.0,
+      "bank_after": 0.5,
+      "path_objective": 249.19882434468693
+    },
+    {
+      "current_action": "B.Fernandes \u2192 Mbeumo",
+      "transfer_count": 1,
+      "current_hit_cost": 0.0,
+      "bank_after": 4.5,
+      "path_objective": 249.12312214982387
+    },
+    {
+      "current_action": "Roll",
       "transfer_count": 0,
       "current_hit_cost": 0.0,
-      "bank_after": 0.0,
-      "path_objective": 45.70982077592801
+      "bank_after": 0.5,
+      "path_objective": 246.49901883004657
     }
   ],
   "rolling_plan": [
     {
-      "gameweek": 1,
-      "transfers": "Initial squad selected",
-      "transfer_count": 0,
+      "gameweek": 2,
+      "transfers": "Enzo \u2192 Gakpo",
+      "transfer_count": 1,
       "free_transfers_before": 1,
-      "free_transfers_after": 2,
+      "free_transfers_after": 1,
+      "hit_cost": 0.0,
+      "bank_after": 0.5,
+      "captain": "Maguire",
+      "projected_score_after_hits": 43.938409060951756
+    },
+    {
+      "gameweek": 3,
+      "transfers": "Milenkovi\u0107 \u2192 Gu\u00e9hi",
+      "transfer_count": 1,
+      "free_transfers_before": 1,
+      "free_transfers_after": 1,
       "hit_cost": 0.0,
       "bank_after": 0.0,
-      "captain": "B.Fernandes",
-      "projected_score_after_hits": 45.70982077592801
+      "captain": "Gu\u00e9hi",
+      "projected_score_after_hits": 43.57074283556452
+    },
+    {
+      "gameweek": 4,
+      "transfers": "B.Fernandes \u2192 Mbeumo",
+      "transfer_count": 1,
+      "free_transfers_before": 1,
+      "free_transfers_after": 1,
+      "hit_cost": 0.0,
+      "bank_after": 4.0,
+      "captain": "Botman",
+      "projected_score_after_hits": 42.96911262270771
+    },
+    {
+      "gameweek": 5,
+      "transfers": "Thiaw \u2192 Tarkowski",
+      "transfer_count": 1,
+      "free_transfers_before": 1,
+      "free_transfers_after": 1,
+      "hit_cost": 0.0,
+      "bank_after": 3.0,
+      "captain": "Tarkowski",
+      "projected_score_after_hits": 43.39931156592426
+    },
+    {
+      "gameweek": 6,
+      "transfers": "Virgil \u2192 Gabriel",
+      "transfer_count": 1,
+      "free_transfers_before": 1,
+      "free_transfers_after": 1,
+      "hit_cost": 0.0,
+      "bank_after": 1.5,
+      "captain": "Gabriel",
+      "projected_score_after_hits": 43.29077969589004
+    },
+    {
+      "gameweek": 7,
+      "transfers": "Gakpo \u2192 Semenyo",
+      "transfer_count": 1,
+      "free_transfers_before": 1,
+      "free_transfers_after": 1,
+      "hit_cost": 0.0,
+      "bank_after": 0.0,
+      "captain": "Gu\u00e9hi",
+      "projected_score_after_hits": 44.0950668521025
     }
   ],
   "chip_comparison": [
     {
       "chip": "triple_captain",
       "eligible_now": true,
-      "current_uplift": 4.1629587588612305,
+      "current_uplift": 4.0038159783133755,
       "minimum_uplift": 7.0,
-      "best_horizon_uplift": 4.1629587588612305,
-      "current_vs_horizon_best": 1.0,
+      "best_horizon_uplift": 4.258625122301915,
+      "current_vs_horizon_best": 0.9401663361599654,
       "passes_use_now_rule": false,
-      "normalised_strength": 0.5947083941230329
+      "normalised_strength": 0.5719737111876251
     },
     {
       "chip": "bench_boost",
       "eligible_now": true,
-      "current_uplift": 12.850293433397958,
+      "current_uplift": 8.48071477642457,
       "minimum_uplift": 9.0,
-      "best_horizon_uplift": 12.850293433397958,
-      "current_vs_horizon_best": 1.0,
-      "passes_use_now_rule": true,
-      "normalised_strength": 1.427810381488662
+      "best_horizon_uplift": 9.023360094874214,
+      "current_vs_horizon_best": 0.9398621674471467,
+      "passes_use_now_rule": false,
+      "normalised_strength": 0.9423016418249522
     },
     {
       "chip": "free_hit",
-      "eligible_now": false,
-      "current_uplift": NaN,
+      "eligible_now": true,
+      "current_uplift": 1.36719063549981,
       "minimum_uplift": 8.0,
-      "best_horizon_uplift": NaN,
-      "current_vs_horizon_best": NaN,
+      "best_horizon_uplift": 2.4214434728981686,
+      "current_vs_horizon_best": 0.5646180267274428,
       "passes_use_now_rule": false,
-      "normalised_strength": NaN
+      "normalised_strength": 0.17089882943747625
     },
     {
       "chip": "wildcard",
-      "eligible_now": false,
-      "current_uplift": NaN,
+      "eligible_now": true,
+      "current_uplift": 6.460153545731686,
       "minimum_uplift": 10.0,
-      "best_horizon_uplift": NaN,
-      "current_vs_horizon_best": NaN,
+      "best_horizon_uplift": 6.460153545731686,
+      "current_vs_horizon_best": 1.0,
       "passes_use_now_rule": false,
-      "normalised_strength": NaN
+      "normalised_strength": 0.6460153545731686
     }
   ],
   "raw_chip_recommendation": {
-    "gameweek": 1,
-    "action": "Play Bench Boost",
-    "chip": "bench_boost",
-    "expected_uplift": 12.850293433397958,
-    "reason": "The chip clears its uplift threshold and is sufficiently close to its best opportunity in the current horizon."
+    "gameweek": 2,
+    "action": "Save all chips",
+    "chip": null,
+    "reason": "No available chip clears both the configured uplift threshold and the within-horizon timing test."
   },
   "chip_readiness_gate": {
     "passed": false,
-    "reason": "Bench Boost is the strongest current six-Gameweek candidate, but the explicit horizon does not show the required double Gameweek, expiry pressure or exceptional bench uplift. Preserve the chip and rerun before the next deadline."
+    "reason": "No available chip clears both the configured uplift threshold and the within-horizon timing test."
   },
   "best_chip_opportunities": [
     {
       "chip": "triple_captain",
-      "best_gameweek_in_horizon": 1,
-      "best_uplift_in_horizon": 4.1629587588612305
+      "best_gameweek_in_horizon": 7,
+      "best_uplift_in_horizon": 4.258625122301915
     },
     {
       "chip": "bench_boost",
-      "best_gameweek_in_horizon": 1,
-      "best_uplift_in_horizon": 12.850293433397958
+      "best_gameweek_in_horizon": 7,
+      "best_uplift_in_horizon": 9.023360094874214
+    },
+    {
+      "chip": "free_hit",
+      "best_gameweek_in_horizon": 5,
+      "best_uplift_in_horizon": 2.4214434728981686
+    },
+    {
+      "chip": "wildcard",
+      "best_gameweek_in_horizon": 2,
+      "best_uplift_in_horizon": 6.460153545731686
     }
   ],
   "freshness_audit": {
-    "checked_at_utc": "2026-07-26T23:02:48.852069+00:00",
-    "latest_next_gameweek": 1,
-    "projected_next_gameweek": 1,
+    "checked_at_utc": "2026-08-26T10:35:40.904829+00:00",
+    "latest_next_gameweek": 2,
+    "projected_next_gameweek": 2,
     "changed_player_rows": 0,
     "changed_fixture_rows": 0,
+    "changed_players": [],
+    "changed_fixtures": [],
     "is_fresh": true
   },
-  "projection_overrides": []
+  "projection_overrides": [],
+  "external_prior_audit": [],
+  "unmatched_priority_new_players": [
+    {
+      "web_name": "Tzolis",
+      "team_short_name": "ARS",
+      "position": "MID",
+      "price": 6.5,
+      "prior_career_fixture_count": 1.0
+    },
+    {
+      "web_name": "David",
+      "team_short_name": "BHA",
+      "position": "FWD",
+      "price": 6.0,
+      "prior_career_fixture_count": 1.0
+    }
+  ]
 }

@@ -1,21 +1,25 @@
-# FPL Predictor v1.0.1
+# FPL Predictor v2.0.2 — Autonomous Manager
 
-A data-driven forecasting and decision-support system for Fantasy Premier League.
+A full-season Fantasy Premier League forecasting and decision engine.
 
-The project uses live FPL data, historical player-fixture records, statistical forecasting and constrained optimisation to recommend:
+The notebook is designed to make one authoritative decision before every FPL deadline:
 
-- the initial 15-player squad;
-- transfers or rolling a free transfer;
-- the starting XI and formation;
+- initial 15-player squad;
+- transfers or rolling;
+- whether a points hit is justified;
+- starting XI and formation;
 - bench order;
 - captain and vice-captain;
-- whether to use a chip;
-- alternative actions and their projected cost.
+- Wildcard, Free Hit, Bench Boost and Triple Captain use;
+- future transfer planning as context for the immediate decision.
 
-The analysis is rerun before every Gameweek deadline. Only the immediate recommendation is intended to be executed; later-Gameweek plans provide context and are recalculated when new information becomes available.
+The intended operating rule is:
 
-> **Status:** production-ready decision-support notebook.  
-> It is designed to support FPL decisions, not to guarantee points or rank.
+> **If Section 12 completes without a hard error, execute its primary current-Gameweek recommendation.**
+
+Future transfer paths are provisional. The notebook is rerun before every deadline and re-solves the problem using the latest available information.
+
+The objective is to maximise **expected season FPL points**. Football outcomes remain stochastic, so no model can guarantee the maximum realised score.
 
 ---
 
@@ -24,58 +28,73 @@ The analysis is rerun before every Gameweek deadline. Only the immediate recomme
 1. [Quick start](#quick-start)
 2. [Installation](#installation)
 3. [Project structure](#project-structure)
-4. [Weekly use](#weekly-use)
-5. [Outputs](#outputs)
-6. [How the system works](#how-the-system-works)
-7. [Modelling and optimisation choices](#modelling-and-optimisation-choices)
-8. [Validation](#validation)
-9. [Production safeguards](#production-safeguards)
-10. [Limitations](#limitations)
-11. [Data sources](#data-sources)
-12. [Version history](#version-history)
+4. [Autonomous operating model](#autonomous-operating-model)
+5. [First-time setup](#first-time-setup)
+6. [Normal weekly workflow](#normal-weekly-workflow)
+7. [Outputs](#outputs)
+8. [Forecasting pipeline](#forecasting-pipeline)
+9. [New and returning players](#new-and-returning-players)
+10. [Expected-points calibration](#expected-points-calibration)
+11. [Optimisation](#optimisation)
+12. [Chip strategy](#chip-strategy)
+13. [Historical validation](#historical-validation)
+14. [Production safeguards](#production-safeguards)
+15. [Common runtime messages](#common-runtime-messages)
+16. [Limitations](#limitations)
+17. [Data sources](#data-sources)
+18. [Version history](#version-history)
 
 ---
 
 ## Quick start
 
-### First complete run
+Open:
 
-1. Create and activate a Python environment.
-2. Install the required packages.
-3. Open `fpl_predictor.ipynb`.
-4. Run the notebook from the beginning.
-5. Run the full walk-forward validation in Section 11 at least once.
-6. Use Section 12 for the final Gameweek recommendation.
+```text
+fpl_predictor_v2_0_2_autonomous.ipynb
+```
 
-The first run downloads and prepares historical data, fits the forecasting models, produces live projections and creates local cache files.
+For normal deadline use:
 
-### Normal weekly run
+```python
+AUTONOMOUS_MODE = True
 
-Before each deadline:
+RUN_SEQUENTIAL_BACKTEST = False
+RUN_FULL_POLICY_BACKTEST = False
+```
 
-1. Restart the kernel.
-2. Run the notebook through **Section 10: Chip evaluation and timing**.
-3. Update the live team state in Section 12.
-4. Run Section 12.
-5. Review the primary action, alternatives, warnings and chip-readiness decision.
-6. Execute only the current Gameweek recommendation.
+Then:
 
-Sections 10A–11 are validation sections and do not need to be rerun every week unless the production policy is being recalibrated.
+```text
+Restart kernel
+    ↓
+Run Sections 1–10
+    ↓
+Skip expensive historical validation
+    ↓
+Run Section 12
+    ↓
+Execute the primary recommendation
+```
+
+The production xP calibration and preferred transfer policy are loaded from versioned cache files created during the first validation run.
+
+Do **not** routinely run the long historical backtests immediately before an FPL deadline. They are validation tools, not weekly inputs.
 
 ---
 
 ## Installation
 
-### Requirements
+Requirements:
 
-- Python 3.10 or later
+- Python 3.10+
 - Jupyter Notebook or JupyterLab
-- Internet access for live FPL data and initial historical-data downloads
+- internet access
 
-Install the core dependencies:
+Install:
 
 ```bash
-pip install numpy pandas requests scipy scikit-learn jupyter
+pip install numpy pandas requests scipy scikit-learn soccerdata jupyter
 ```
 
 Start Jupyter:
@@ -84,124 +103,609 @@ Start Jupyter:
 jupyter notebook
 ```
 
-Then open:
-
-```text
-fpl_predictor.ipynb
-```
-
-The notebook includes an environment preflight check and raises a clear error when a required package or incompatible runtime is detected.
+The notebook performs an environment preflight and stops early when a required package is unavailable.
 
 ---
 
 ## Project structure
 
-The project deliberately keeps the number of files small.
-
 ```text
-fpl_predictor/
-├── fpl_predictor.ipynb
+FPL_Predictor/
+├── fpl_predictor_v2_0_2_autonomous.ipynb
 ├── README.md
+│
 ├── data/
 │   ├── historical_fpl.csv.gz
-│   └── fpl_weekly_snapshots.json.gz
+│   ├── fpl_weekly_snapshots.json.gz
+│   ├── external_player_priors_v1_2.csv.gz
+│   ├── xp_calibration_v2.json
+│   ├── walk_forward_policy_scorecard_v2.csv.gz
+│   ├── sequential_backtest_v2.pkl.gz
+│   ├── autonomous_fpl_state_v2.json
+│   ├── soccerdata_fbref/
+│   └── soccerdata_understat/
+│
 └── outputs/
     └── latest_weekly_recommendation.json
 ```
 
-### Files
+Not every cache exists before the first complete run.
 
-`fpl_predictor.ipynb`  
-Contains the complete data, modelling, optimisation, validation and weekly recommendation workflow.
+### `historical_fpl.csv.gz`
 
-`data/historical_fpl.csv.gz`  
-Local compressed cache of the merged historical player-fixture dataset. It avoids downloading and rebuilding the same historical archive on every run.
+Compressed historical player-fixture dataset used for model training and chronological validation.
 
-`data/fpl_weekly_snapshots.json.gz`  
-Compressed pre-deadline snapshots used to preserve what the model knew at the time of each live recommendation.
+### `fpl_weekly_snapshots.json.gz`
 
-`outputs/latest_weekly_recommendation.json`  
-The latest consolidated recommendation. It is overwritten rather than creating a new output file every week.
+Pre-deadline snapshots of the official FPL API. These make future live-decision backtests reproducible.
+
+### `external_player_priors_v1_2.csv.gz`
+
+Processed previous-season player priors used especially for new and returning Premier League players.
+
+### `xp_calibration_v2.json`
+
+Versioned out-of-sample expected-points calibration fitted in Section 11. Autonomous production requires this by default.
+
+### `walk_forward_policy_scorecard_v2.csv.gz`
+
+Cached comparison of transfer policies so the expensive policy backtest does not need to be rerun weekly.
+
+### `sequential_backtest_v2.pkl.gz`
+
+Optional cached full sequential strategy/chip backtest.
+
+### `autonomous_fpl_state_v2.json`
+
+Persistent season ledger containing the model's committed team state and its next pending recommendation.
+
+### `latest_weekly_recommendation.json`
+
+The latest consolidated production recommendation.
 
 ---
 
-## Weekly use
+## Autonomous operating model
+
+The real FPL team is represented through a persistent ledger.
+
+### Committed state
+
+The last state verified after a completed deadline:
+
+```text
+permanent squad
+purchase prices
+bank
+banked free transfers
+available chips
+last Free Hit Gameweek
+```
+
+### Pending state
+
+The recommendation the model expects you to execute for the next deadline.
+
+For example:
+
+```text
+GW8
+Transfer: Player A → Player B
+Captain: Player C
+Chip: None
+```
+
+After the deadline is completed, the next run compares the public FPL team with the pending recommendation.
+
+If they match, the pending state becomes committed.
+
+If they do not match and strict reconciliation is enabled, the notebook stops rather than silently optimising from the wrong team.
+
+---
+
+## First-time setup
+
+### 1. Autonomous configuration
+
+Keep:
+
+```python
+AUTONOMOUS_MODE = True
+```
+
+Before your FPL team exists:
+
+```python
+FPL_TEAM_ID = None
+```
+
+Once your entry exists, set the numeric team ID once:
+
+```python
+FPL_TEAM_ID = 1234567
+```
+
+Leave it set for the season.
+
+### 2. Generate the calibration and policy caches
+
+For the initial v2 validation:
+
+```python
+RUN_SEQUENTIAL_BACKTEST = False
+RUN_FULL_POLICY_BACKTEST = True
+WALK_FORWARD_MAX_GAMEWEEKS = None
+```
+
+Run the notebook through **Section 11**.
+
+This creates or refreshes:
+
+```text
+data/xp_calibration_v2.json
+data/walk_forward_policy_scorecard_v2.csv.gz
+```
+
+Section 11 can take a long time because it performs chronological forecast and policy validation across completed seasons.
+
+### 3. Restart for production
+
+After Section 11 finishes:
+
+```python
+RUN_FULL_POLICY_BACKTEST = False
+RUN_SEQUENTIAL_BACKTEST = False
+```
+
+Restart the kernel.
+
+Run Sections 1–10 and then Section 12.
+
+### Optional sequential validation
+
+After the xP calibration exists, the complete sequential strategy/chip backtest can be generated with:
+
+```python
+RUN_SEQUENTIAL_BACKTEST = True
+```
+
+This can be slow and is **not** needed for weekly production.
+
+After it finishes:
+
+```python
+RUN_SEQUENTIAL_BACKTEST = False
+```
+
+The result is cached.
+
+---
+
+## Normal weekly workflow
+
+Before each deadline:
+
+```text
+1. Restart the kernel.
+2. Keep both historical-backtest flags False.
+3. Run Sections 1–10.
+4. Run Section 12.
+5. If there is no hard error, execute the primary recommendation.
+6. Ignore later provisional transfer-path actions.
+7. Rerun the notebook before the next deadline.
+```
+
+Recommended production settings:
+
+```python
+AUTONOMOUS_MODE = True
+
+AUTONOMOUS_STRICT_RECONCILIATION = True
+AUTONOMOUS_REQUIRE_CALIBRATION_CACHE = True
+AUTONOMOUS_ALLOW_MANUAL_PROJECTION_OVERRIDES = False
+
+RUN_SEQUENTIAL_BACKTEST = False
+RUN_FULL_POLICY_BACKTEST = False
+
+WEEKLY_STRICT_FRESHNESS_CHECK = True
+WEEKLY_POLICY_PROFILE = "auto"
+```
+
+The model uses a rolling/receding horizon. New information is incorporated every week instead of committing to a fixed season-long plan.
+
+---
+
+## Outputs
 
 Section 12 is the production interface.
 
-### Current squad
+It reports:
 
-After Gameweek 1, enter exactly 15 players:
+- initial squad or transfer action;
+- transfer(s) in and out;
+- hit cost if applicable;
+- starting XI;
+- formation;
+- captain;
+- vice-captain;
+- bench order;
+- expected current-GW score;
+- chip decision;
+- decision confidence;
+- future transfer path;
+- warnings and audits.
 
-```python
-WEEKLY_CURRENT_SQUAD = [
-    # Official FPL player IDs or exact player names
-]
+### Alternatives
+
+The strongest alternative actions are displayed with their path objectives.
+
+The decision-confidence label is based on the objective gap between the best and second-best immediate actions.
+
+### Selected-vs-omitted audit
+
+The notebook compares selected players with strong omitted alternatives.
+
+This is especially useful when a more expensive player has similar immediate xP to a cheaper alternative: the audit shows whether the selection is justified by the wider planning horizon and squad structure.
+
+### New-player audit
+
+The weekly output records:
+
+- external-prior availability;
+- matching method;
+- source league;
+- reliability;
+- translated xG/xA/save rates;
+- sparse market-prior use;
+- important unmatched new players.
+
+### JSON output
+
+Saved to:
+
+```text
+outputs/latest_weekly_recommendation.json
 ```
 
-Players can be entered using:
+The payload includes:
 
-- official FPL player IDs;
-- exact `web_name` values;
-- exact full names from the current player table.
-
-Before Gameweek 1, leave the list empty. The notebook will select an initial legal squad instead of treating the action as a transfer.
-
-### Money and free transfers
-
-```python
-WEEKLY_MONEY_IN_BANK = 0.0
-WEEKLY_FREE_TRANSFERS = 1
+```text
+summary
+autonomous pending state
+selected-vs-omitted audit
+starting XI
+bench
+transfer alternatives
+rolling plan
+chip comparison
+raw chip recommendation
+chip readiness gate
+best chip opportunities
+freshness audit
+projection overrides
+external-prior audit
+priority unmatched new players
 ```
 
-Amounts are expressed in millions of pounds, following FPL notation.
+---
 
-### Purchase and selling prices
+## Forecasting pipeline
 
-```python
-WEEKLY_PURCHASE_PRICES = {
-    # "Player name": 7.5,
-}
-
-WEEKLY_SELLING_PRICES = {
-    # "Player name": 7.7,
-}
+```text
+Official live FPL data
+        +
+Historical FPL player-fixture data
+        +
+Previous-season external player priors
+        ↓
+Leakage-safe feature engineering
+        ↓
+Expected minutes / rotation
+        ↓
+Team attack and defence forecasts
+        ↓
+Player event-rate forecasts
+        ↓
+Raw component expected FPL points
+        ↓
+Sparse-player fallback if needed
+        ↓
+Out-of-sample xP calibration
+        ↓
+Calibrated Gameweek projections
+        ↓
+Squad / XI / captain optimiser
+        ↓
+Rolling transfer search
+        ↓
+Chip evaluation
+        ↓
+Autonomous current-GW instruction
 ```
 
-Explicit selling prices take precedence.
+The fundamental forecasting unit is one player in one fixture.
 
-When purchase prices are supplied, the notebook reconstructs the FPL selling price where possible. Omitting both values makes the current market price the fallback.
+That naturally handles:
 
-### Available chips
-
-Update the active half-season chip set after using a chip:
-
-```python
-WEEKLY_AVAILABLE_CHIPS = {
-    "triple_captain": True,
-    "bench_boost": True,
-    "free_hit": True,
-    "wildcard": True,
-}
-
-WEEKLY_LAST_FREE_HIT_GAMEWEEK = None
+```text
+normal GW  → one fixture
+blank GW   → zero fixtures
+double GW  → multiple fixtures
 ```
 
-### Policy selection
+Fixture predictions are aggregated into player-Gameweek projections.
 
-```python
-WEEKLY_POLICY_PROFILE = "auto"
-WEEKLY_POLICY_FALLBACK = "rolling_6gw_no_hits"
+---
+
+## Expected minutes and rotation
+
+The model estimates:
+
+```text
+P(appearance)
+P(start)
+P(60+ minutes)
+expected minutes if starting
+expected minutes if used as a substitute
 ```
 
-With `auto`:
+Conceptually:
 
-- Section 12 uses the policy selected by the completed Section 11 validation when that result exists in memory;
-- otherwise it uses the conservative six-Gameweek, no-hit fallback.
+```text
+Expected minutes
+= P(start) × E(minutes | start)
++ P(substitute appearance) × E(minutes | substitute appearance)
+```
 
-The currently validated historical selection is the one-Gameweek, no-hit policy. The wider fixture horizon remains visible as strategic context even when the immediate action is chosen primarily from the next Gameweek.
+Probability relationships are reconciled so that, for example:
 
-Available policy profiles are:
+```text
+P(start) <= P(appearance)
+P(60+) <= P(start)
+```
+
+Minutes feed every scoring component and are particularly important for rotation, clean sheets, captaincy fallback and automatic substitutions.
+
+---
+
+## Component expected points
+
+Expected FPL points are built from interpretable components:
+
+```text
+appearance
+goals
+assists
+clean sheets
+goalkeeper saves
+defensive contributions
+bonus
+goals-conceded deductions
+cards
+rare deductions
+```
+
+The event layer includes numerical safeguards such as:
+
+```text
+finite-value checks
+non-negative rates
+event-rate caps
+exact zero ordinary xG/xA for goalkeepers
+fixture-level xP sanity bounds
+```
+
+---
+
+## New and returning players
+
+The hierarchy is:
+
+```text
+1. Existing Premier League history
+       ↓
+2. Previous-season external prior
+       ↓
+3. Weak position/price market prior
+       ↓
+4. Generic model priors
+```
+
+### FBref
+
+Used primarily for:
+
+```text
+minutes
+appearances
+starts
+role
+goals
+assists
+goalkeeper saves
+```
+
+### Understat
+
+Used primarily for previous-season:
+
+```text
+xG
+xA
+```
+
+Expected attacking-stat precedence is:
+
+```text
+Understat xG/xA
+    ↓
+direct FBref per-90 xG/xAG
+    ↓
+FBref shooting per-90
+    ↓
+FBref total xG/xA divided by minutes
+```
+
+### League translation
+
+Foreign-league rates are translated relative to source-league and Premier League positional baselines and shrunk by sample size.
+
+### Fade-out
+
+Explicit external-prior influence fades as current-season Premier League evidence accumulates.
+
+### Default automatic league coverage
+
+```text
+Premier League
+La Liga
+Bundesliga
+Serie A
+Ligue 1
+```
+
+Additional SoccerData leagues can be configured where supported.
+
+### Sparse-player market prior
+
+If a player has almost no Premier League history and no matched external prior, v2 applies a weak empirical prior based on position and FPL price.
+
+Defaults:
+
+```python
+SPARSE_PLAYER_MARKET_PRIOR_WEIGHT = 0.30
+SPARSE_PLAYER_MAX_PRIOR_FIXTURES = 1
+```
+
+This prevents an expensive unmatched signing from being treated exactly like an unknown minimum-price player.
+
+---
+
+## Expected-points calibration
+
+Raw component xP can rank players well while still being systematically compressed or biased.
+
+v2 adds an out-of-sample calibration layer.
+
+```text
+raw component xP
+        ↓
+monotone position-level calibration
+        ↓
+shrunk price-band residual correction
+        ↓
+bounded adjustment
+        ↓
+production xP
+```
+
+The live tables retain:
+
+```text
+raw_expected_points
+xp_calibration_adjustment
+expected_points
+```
+
+so the calibration is auditable.
+
+Default safeguards:
+
+```python
+XP_CALIBRATION_BLEND = 0.85
+XP_CALIBRATION_MIN_ROWS_PER_POSITION = 500
+XP_CALIBRATION_MAX_ABS_ADJUSTMENT = 1.50
+XP_CALIBRATION_MAX_REL_ADJUSTMENT = 0.40
+```
+
+The calibration is fitted from historical out-of-sample predictions, not from future information.
+
+Calibration matters because absolute xP affects:
+
+```text
+transfer-hit decisions
+captaincy
+Bench Boost uplift
+Triple Captain uplift
+Free Hit value
+Wildcard value
+```
+
+---
+
+## Optimisation
+
+### Squad structure
+
+The optimiser enforces the configured FPL structure:
+
+```text
+15 players
+2 GK
+5 DEF
+5 MID
+3 FWD
+budget constraint
+club limit
+```
+
+The XI must satisfy legal formation rules.
+
+### XI, bench and captaincy
+
+For each squad it selects:
+
+```text
+starting XI
+bench order
+captain
+vice-captain
+```
+
+Expected automatic substitutions and captain fallback are incorporated.
+
+### Transfers
+
+The system evaluates:
+
+```text
+roll
+one transfer
+multiple free transfers
+paid transfers when the selected policy allows them
+```
+
+It accounts for:
+
+```text
+banked free transfers
+money in the bank
+purchase/selling prices
+positions
+club limits
+hit costs
+future squad value
+```
+
+### Rolling horizon
+
+The full transfer tree is too large to enumerate exhaustively, so the notebook uses beam search.
+
+Conceptually:
+
+```text
+Current action value
+= current expected points
++ future projected points
+- hit costs
++ terminal value
+```
+
+Only the first action is executed.
+
+### Policy profiles
+
+Section 11 compares:
 
 ```text
 greedy_1gw_no_hits
@@ -210,508 +714,336 @@ rolling_6gw_no_hits
 rolling_6gw_hits
 ```
 
-### Late information overrides
-
-Reliable information may appear after the FPL API was last updated, such as a confirmed injury or credible press-conference statement.
-
-Use multiplicative projection adjustments:
+With:
 
 ```python
-WEEKLY_CURRENT_GW_PROJECTION_MULTIPLIERS = {
-    # "Player name": 0.0,  # confirmed unavailable this Gameweek
-}
-
-WEEKLY_HORIZON_PROJECTION_MULTIPLIERS = {
-    # "Player name": 0.5,  # reduced expected availability over the horizon
-}
+WEEKLY_POLICY_PROFILE = "auto"
 ```
 
-Values must be between 0 and 1.
+production loads the historically selected cached policy.
 
-Use these overrides sparingly and only for reliable information.
+The v2 fallback is:
+
+```text
+rolling_6gw_hits
+```
+
+but the fallback is not a substitute for completing the validation run.
 
 ---
 
-## Outputs
+## Chip strategy
 
-Section 12 produces one consolidated decision report.
-
-### Primary recommendation
-
-The dashboard shows:
-
-- initial squad selection, transfer or roll;
-- transfer(s) in and out;
-- expected gain versus the best roll/no-transfer path;
-- starting XI and formation;
-- captain and vice-captain;
-- bench order;
-- expected current-Gameweek score;
-- chip recommendation;
-- decision confidence;
-- warnings and assumptions.
-
-### Alternative actions
-
-The best alternative immediate actions are displayed with their projected objective values. This makes it possible to see whether the recommendation is decisive or marginal.
-
-A small difference between the top two actions should be treated differently from a clear expected-points advantage.
-
-### Future context
-
-The notebook also shows a provisional transfer and chip outlook across the active planning horizon.
-
-This is not a commitment. The future plan is recalculated before the next deadline using updated:
-
-- fixtures;
-- injuries;
-- prices;
-- recent performances;
-- minutes;
-- team strength;
-- available transfers;
-- chip state.
-
-### JSON output
-
-The latest recommendation is saved to:
+The model evaluates:
 
 ```text
-outputs/latest_weekly_recommendation.json
+Triple Captain
+Bench Boost
+Free Hit
+Wildcard
 ```
 
-The file includes:
+### Triple Captain
 
-- resolved policy and its source;
-- current team state;
-- recommendation;
-- transfer alternatives;
-- XI, captaincy and bench;
-- final chip decision;
-- raw chip candidate before the readiness gate;
-- freshness audit;
-- warnings;
-- generation timestamp.
+Incremental value is the extra captain copy beyond normal captaincy.
+
+### Bench Boost
+
+Compares all 15 players counting with expected normal scoring including automatic substitutions.
+
+### Free Hit
+
+Compares the best temporary one-GW squad with the best normal path while preserving the permanent squad state.
+
+### Wildcard
+
+Compares a permanent rebuild with the best no-Wildcard path over the planning horizon.
+
+### Readiness gate
+
+A locally best chip uplift does not automatically trigger chip use.
+
+The production gate can require structural evidence such as:
+
+```text
+blank GW
+double GW
+chip expiry pressure
+major squad restructuring
+avoided paid transfers
+exceptional current uplift
+```
+
+The raw chip candidate remains visible for audit.
+
+### Half-season handling
+
+The autonomous ledger resets the new chip set when crossing into GW20 while preserving state required for Free Hit restrictions.
 
 ---
 
-## How the system works
+## Historical validation
+
+### Walk-forward forecast validation
+
+Chronological holdouts:
 
 ```text
-Official live FPL data
-        +
-Historical player-fixture data
-        ↓
-Leakage-safe feature engineering
-        ↓
-Minutes and rotation model
-        ↓
-Team-strength and player-event models
-        ↓
-Component-level expected FPL points
-        ↓
-Squad, line-up and captain optimisation
-        ↓
-Transfer-path search
-        ↓
-Chip evaluation and readiness gate
-        ↓
-Weekly recommendation dashboard
+2023/24
+2024/25
+2025/26
 ```
 
-Prediction and decision-making are deliberately separate.
+Each holdout is trained only on configured earlier seasons.
 
-The forecasting layer estimates player and team outcomes. The optimisation layer decides what to do with those estimates under FPL constraints.
-
-This separation makes the project easier to:
-
-- interpret;
-- debug;
-- backtest;
-- recalibrate;
-- extend when FPL rules change.
-
----
-
-## Modelling and optimisation choices
-
-### Player-fixture modelling unit
-
-The fundamental row is one player in one fixture.
-
-This is necessary because a player can have:
-
-- one fixture in a Gameweek;
-- no fixture in a blank Gameweek;
-- multiple fixtures in a double Gameweek.
-
-Fixture predictions are later aggregated to player-Gameweek projections.
-
-### Expected minutes and rotation
-
-Minutes are modelled as related components rather than one opaque regression:
+Metrics include:
 
 ```text
-P(appearance)
-P(start)
-P(60+ minutes)
-Expected minutes if starting
-Expected minutes if appearing as a substitute
+MAE
+RMSE
+Brier score
+AUC
+Spearman correlation
+prediction bias
+calibration diagnostics
+position diagnostics
 ```
 
-The final expectation is:
+### Deadline-frozen decisions
+
+Historical decisions are generated using only information available before the simulated deadline.
+
+Assertions guard against leakage in:
 
 ```text
-Expected minutes
-= P(start) × E(minutes | start)
-+ P(substitute appearance) × E(minutes | substitute appearance)
+player history
+team results
+external-prior season
+forecast origin
+future GW outcomes
 ```
 
-The probabilities are reconciled so that:
+### Policy validation
+
+Controlled by:
+
+```python
+RUN_FULL_POLICY_BACKTEST
+```
+
+Normal weekly value:
+
+```python
+False
+```
+
+The resulting scorecard is cached.
+
+### Sequential strategy validation
+
+Controlled by:
+
+```python
+RUN_SEQUENTIAL_BACKTEST
+```
+
+Normal weekly value:
+
+```python
+False
+```
+
+It simulates:
 
 ```text
-P(start) ≤ P(appearance)
-P(60+ minutes) ≤ P(start)
-P(no appearance) + P(start) + P(sub appearance) = 1
+opening squad
+transfers
+hits
+XI
+bench
+captaincy
+chips
+realised historical points
 ```
 
-Historical features use only information available before the relevant Gameweek.
+The sequential backtest requires the v2 calibration cache first.
 
-### Team strength
-
-Poisson models estimate:
-
-- expected team goals;
-- expected goals conceded;
-- clean-sheet probability.
-
-Inputs include rolling team attacking and defensive performance, opponent strength and home advantage.
-
-### Player event rates
-
-Separate position-aware models estimate relevant event rates, including:
-
-- goals;
-- assists;
-- goalkeeper saves;
-- bonus;
-- cards.
-
-Goalkeepers do not receive ordinary attacking projections in the baseline.
-
-Defenders, midfielders and forwards use separate attacking models to avoid excessive shrinkage toward a shared average.
-
-### Component-level expected points
-
-Expected points are calculated through transparent FPL components:
-
-```text
-Appearance
-+ goals
-+ assists
-+ clean sheets
-+ saves
-+ defensive contributions
-+ bonus
-− goals-conceded deductions
-− cards and rare-event deductions
-```
-
-Threshold-based events use expected probabilities rather than rounded averages.
-
-Examples include:
-
-- save points at 3, 6 and 9 saves;
-- goals-conceded deductions at 2, 4 and 6 goals;
-- defensive-contribution thresholds.
-
-### Defensive contributions
-
-Defensive-contribution probabilities combine:
-
-- expected action volume;
-- shifted historical qualification rates;
-- position-level priors;
-- expected minutes.
-
-This prevents the threshold from becoming almost automatic for centre-backs while preserving genuine value for high-volume defenders.
-
-### Squad and line-up optimisation
-
-The optimiser enforces:
-
-```text
-15 total players
-2 goalkeepers
-5 defenders
-5 midfielders
-3 forwards
-Maximum 3 players per club under normal circumstances
-£100.0m initial budget
-```
-
-The starting XI must contain:
-
-```text
-1 goalkeeper
-3–5 defenders
-2–5 midfielders
-1–3 forwards
-11 starters
-```
-
-The optimiser selects:
-
-- squad;
-- starting XI;
-- bench order;
-- captain;
-- vice-captain.
-
-Automatic-substitution scenarios and captain fallback are included in expected scoring.
-
-A real-world player transfer can temporarily leave an owned squad above the three-player club limit. The notebook permits that transitional state but requires subsequent transfers to reduce the excess.
-
-### Transfer planning
-
-The full multi-Gameweek transfer space is too large to enumerate exhaustively.
-
-The notebook therefore uses beam search:
-
-1. generate legal transfer actions;
-2. score the resulting current-Gameweek squad;
-3. estimate the remaining planning horizon;
-4. retain the strongest distinct squad states;
-5. repeat for later projected Gameweeks.
-
-The transfer engine handles:
-
-- rolling;
-- one or two transfers;
-- banked free transfers;
-- selling prices;
-- money in the bank;
-- transfer-hit deductions when the selected policy permits them;
-- terminal squad value;
-- club and positional constraints.
-
-Future prices are held constant inside a planning horizon and refreshed at the next real deadline.
-
-### Chip evaluation
-
-Every chip is evaluated through its incremental expected value.
-
-#### Triple Captain
-
-Adds one extra expected copy of the captain’s score beyond normal captaincy.
-
-#### Bench Boost
-
-Compares:
-
-```text
-Bench Boost uplift
-= E(all 15 players counting)
-- E(normal score with automatic substitutions)
-```
-
-#### Free Hit
-
-Compares the best temporary one-Gameweek squad with the best normal path, including avoided transfer costs.
-
-#### Wildcard
-
-Compares the best permanent rebuilt squad over the remaining horizon with the best path without using the chip.
-
-### Chip readiness gate
-
-A positive or locally maximal uplift does not automatically trigger a chip.
-
-In conservative mode, the use-now recommendation also requires structural evidence such as:
-
-- a blank or double Gameweek;
-- chip-expiry pressure;
-- exceptional uplift;
-- a strong squad-restructuring reason for a Wildcard;
-- avoided paid transfers or other clear strategic value.
-
-The raw chip candidate remains visible even when the production gate recommends saving the chip.
-
----
-
-## Validation
-
-### Leakage prevention
-
-Historical forecasts are frozen at the simulated deadline.
-
-For each forecast origin:
-
-- player form and minutes use only earlier Gameweeks;
-- team strength uses only completed earlier matches;
-- future outcomes cannot update an earlier transfer horizon;
-- actual points are accessed only after the simulated decision is fixed.
-
-The notebook includes assertions that stop execution if future information enters historical features.
-
-### Walk-forward folds
-
-The expected-points system is evaluated using expanding chronological folds:
-
-| Holdout season | Training seasons |
-|---|---|
-| 2023/24 | 2022/23 |
-| 2024/25 | 2022/23–2023/24 |
-| 2025/26 | 2022/23–2024/25 |
-
-The component xP model outperformed its rolling-points baseline on mean absolute error in all three folds and produced stronger rank correlation in each fold.
-
-Observed holdout results:
-
-| Season | Component xP MAE | Rolling MAE | Component Spearman | Rolling Spearman |
-|---|---:|---:|---:|---:|
-| 2023/24 | 0.937 | 1.008 | 0.680 | 0.673 |
-| 2024/25 | 1.007 | 1.057 | 0.703 | 0.683 |
-| 2025/26 | 0.976 | 1.056 | 0.718 | 0.706 |
-
-### Policy comparison
-
-The transfer policy is selected by comparing:
-
-```text
-1-Gameweek, no hits
-3-Gameweek, no hits
-6-Gameweek, no hits
-6-Gameweek, hits allowed
-```
-
-In the current three-season comparison, the one-Gameweek no-hit profile produced the strongest average realised points.
-
-This result is treated as a production policy selection, not as proof that longer planning horizons are intrinsically inferior. Future fixtures remain useful context, and the policy should be recalibrated as additional seasons and live decisions become available.
-
-### Interpretation
-
-Historical backtests are evidence of internal consistency and comparative value. They are not expected future points or rank guarantees.
-
-A static opening squad is a weak benchmark. Strategy gains against it should not be interpreted as gains over an expert FPL manager.
+Backtests are evidence of comparative historical performance, not guarantees of future rank.
 
 ---
 
 ## Production safeguards
 
-### Freshness audit
+A **hard error means do not make an FPL move from the current output** until the technical/data issue is resolved.
 
-Before generating a weekly recommendation, Section 12 compares the in-memory projections with the latest official FPL API state.
+### Freshness check
 
-It checks:
+Before producing a recommendation, Section 12 compares the in-memory forecast state with a fresh official FPL API request.
 
-- next Gameweek;
-- player prices;
-- availability status;
-- player news;
-- fixture assignments;
-- fixture dates;
-- blank and double-Gameweek changes.
+Relevant player checks include:
 
-With strict freshness enabled, the notebook stops instead of recommending from stale projections.
+```text
+price
+status
+chance of playing next round
+news
+```
+
+Fixture changes are also checked.
+
+With:
 
 ```python
 WEEKLY_STRICT_FRESHNESS_CHECK = True
 ```
 
-### Input validation
+stale projections cause the notebook to stop.
 
-The production section validates:
+### Team-state reconciliation
 
-- squad size;
-- unique player references;
-- position composition;
-- player availability in the current pool;
-- money in the bank;
-- free-transfer range;
-- chip-state values;
-- price mappings;
-- late-news multipliers;
-- selected policy profile.
+With:
 
-### Numerical stability
+```python
+AUTONOMOUS_STRICT_RECONCILIATION = True
+```
 
-Event-rate predictions are bounded and checked for:
+the notebook stops if the public FPL team does not match the previous pending recommendation.
 
-- missing values;
-- infinite values;
-- implausible projections;
-- invalid probability relationships.
+### Calibration requirement
 
-The notebook stops if numerical instability reappears.
+With:
 
-### Decision confidence
+```python
+AUTONOMOUS_REQUIRE_CALIBRATION_CACHE = True
+```
 
-The dashboard reports the projected gap between the best and second-best immediate actions.
+autonomous Section 12 requires:
 
-This helps distinguish:
+```text
+data/xp_calibration_v2.json
+```
 
-- a clear recommendation;
-- a marginal decision that may be overturned by late team news or a small modelling error.
+### Manual overrides
+
+By default:
+
+```python
+AUTONOMOUS_ALLOW_MANUAL_PROJECTION_OVERRIDES = False
+```
+
+This prevents subjective projection changes from silently altering a supposedly autonomous season.
+
+---
+
+## Common runtime messages
+
+### Official FPL API changed since projections were run
+
+Meaning:
+
+```text
+The projections in memory are stale.
+```
+
+Action:
+
+```text
+Rerun Sections 1–10
+then rerun Section 12
+```
+
+Do not normally disable the freshness check.
+
+### Missing xP calibration cache
+
+Action:
+
+```text
+Run Section 11 once
+restart kernel
+rerun Sections 1–10
+run Section 12
+```
+
+### Public FPL picks do not match the previous recommendation
+
+Possible causes:
+
+```text
+previous recommendation was not executed
+a manual transfer was made
+wrong FPL_TEAM_ID
+ledger belongs to a different state
+```
+
+Resolve the mismatch before continuing.
+
+### External-prior warning
+
+An external data source may be unavailable or a player may be unmatched.
+
+The notebook can fall back to Premier League history, the sparse position/price prior or generic priors. Important unmatched players are surfaced in the weekly audit.
 
 ---
 
 ## Limitations
 
-The notebook is production-ready as a decision-support system, but several limitations remain.
+### No guarantee of realised points
 
-### Rotation and availability
+Expected value is not realised value.
 
-The live model does not automatically collect all:
+Good decisions can lose points because of:
 
-- press-conference information;
-- predicted line-ups;
-- European match minutes;
-- domestic-cup minutes;
-- reliable recovery dates;
-- detailed competition for each squad position.
+```text
+red cards
+penalty misses
+unexpected benchings
+injuries
+finishing variance
+late goals
+bonus variance
+```
 
-Manual projection multipliers may therefore be needed.
+The system should be evaluated over repeated decisions, not one transfer.
 
-### Absolute calibration
+### Team news
 
-Player ranking is more reliable than the exact displayed team-score total.
+The notebook does not automatically collect every:
 
-Historical results show some underprediction of weekly team scores. This matters particularly when interpreting:
+```text
+press conference
+predicted lineup
+European match minute
+domestic-cup minute
+training report
+manager quote
+```
 
-- exact expected scores;
-- small transfer gains;
-- chip-uplift thresholds.
+Running close to the deadline reduces, but does not eliminate, this information gap.
 
-### Search approximation
+### External league coverage
 
-Beam search controls runtime but can miss the global optimum.
-
-Increasing candidate and beam widths may improve recall at the cost of substantially longer execution.
+Unsupported competitions can leave some new players dependent on the sparse price/position prior.
 
 ### Future prices
 
-Future player prices are not forecast inside the planning horizon.
+Future FPL price changes are not perfectly forecast within the planning horizon.
 
-Current prices and selling prices are refreshed before the next deadline.
+### Beam-search approximation
 
-### Chip timing
+Beam search makes long-horizon transfer optimisation tractable but does not guarantee that every possible squad path has been evaluated.
 
-Chip decisions are strongest when confirmed blanks, doubles or expiry pressure enter the explicit forecast horizon.
+### Absolute xP remains uncertain
 
-Long-range opportunities outside the modelled horizon remain uncertain.
+Calibration improves historical bias but does not make a displayed expected-points value a literal promise.
 
-### Historical data coverage
+### Long-range chip uncertainty
 
-Historical defensive-action fields are concentrated in recent seasons. Earlier defensive-contribution estimates rely more heavily on priors.
+Future blank and double Gameweeks may not yet be confirmed inside the active horizon.
 
-The external historical archive can contain duplicate or incomplete records. The loader resolves known duplicate patterns and validates uniqueness after cleaning.
+### Rule/API changes
 
-### Structural changes
-
-FPL rules, scoring, APIs and data fields can change between seasons.
-
-The notebook includes schema checks, but major rule changes may require model and optimisation updates.
+Major FPL scoring, chip or API changes may require code updates.
 
 ---
 
@@ -719,100 +1051,136 @@ The notebook includes schema checks, but major rule changes may require model an
 
 ### Official Fantasy Premier League API
 
-Used for current-season:
+Used as the source of truth for the live season:
 
-- players;
-- teams;
-- prices;
-- ownership;
-- availability;
-- player news;
-- fixtures;
-- Gameweek deadlines;
-- live and completed Gameweek statistics.
-
-The official API is treated as the source of truth for the live weekly state.
+```text
+players
+teams
+prices
+availability
+news
+fixtures
+Gameweeks
+deadlines
+live/completed statistics
+public team verification
+```
 
 ### Historical FPL archive
 
-Vaastav’s Fantasy Premier League repository is used for completed historical player-fixture records, player metadata and team information.
+Used for completed player-fixture history and chronological validation.
 
-The notebook:
+The loader standardises schemas, resolves duplicate player-fixture rows, keeps stable identifiers where possible and excludes known leakage-prone fields.
 
-- downloads selected seasons;
-- standardises fields;
-- removes rows without valid fixtures;
-- resolves repeated player-fixture records;
-- excludes known leakage-prone fields;
-- merges seasons;
-- stores one local compressed cache.
+### FBref via SoccerData
 
----
+Used for previous-season new-player information including role, minutes and goalkeeper saves.
 
-## Reproducibility
+### Understat via SoccerData
 
-Every live recommendation should preserve:
+Used primarily for previous-season xG and xA.
 
-- the current FPL data snapshot;
-- the team state;
-- the resolved policy;
-- the generated recommendation;
-- the generation timestamp.
-
-This allows later evaluation of what the model knew at the deadline rather than judging decisions using information that appeared afterwards.
-
-Set a fixed random seed where applicable and avoid modifying historical caches during an active evaluation without recording the change.
+External data are used as priors; they are not future current-season information.
 
 ---
 
-## Recommended operating discipline
+## Recommended season operating rule
 
-Before acting on a recommendation:
+```text
+IF Section 12 completes successfully:
+    execute exactly the primary current-GW recommendation
 
-1. Run the freshness check.
-2. Review FPL player news.
-3. Review reliable late injury and press-conference information.
-4. Apply manual multipliers only when justified.
-5. Inspect the top alternative action.
-6. Check decision confidence.
-7. Treat a chip recommendation more conservatively than a normal transfer.
-8. Execute only the immediate action.
-9. Save the resulting weekly state for the next deadline.
+IF Section 12 raises a hard error:
+    execute nothing
+    resolve the data/state problem first
+
+NEVER:
+    execute the provisional later-GW transfer path without rerunning
+    rerun expensive historical backtests before every deadline
+    silently override the autonomous ledger
+```
+
+This keeps football decisions model-led while treating technical failures separately from football judgement.
 
 ---
 
 ## Version history
 
-### v1.0.1
+### v2.0.2 — Autonomous Manager
 
-- Added handling for temporary club-limit violations caused by real-world player transfers.
-- Finalised the live weekly dashboard.
-- Added automatic production-policy resolution.
-- Added conservative chip-readiness gating.
-- Added current-state freshness checks.
-- Added Gameweek 1 initial-squad handling.
-- Added input and numerical-stability validation.
-- Added full walk-forward policy comparison.
-- Added deadline-frozen historical forecasting.
-- Corrected position-level attacking-rate shrinkage.
-- Recalibrated defensive-contribution projections.
-- Added recommendation JSON output.
+Current version.
 
-### v1.0.0
+Major additions and fixes:
 
-- First complete end-to-end forecasting and optimisation pipeline.
-- Added historical data preparation.
-- Added minutes and rotation models.
-- Added component expected-points models.
-- Added squad, line-up, captain and bench optimisation.
-- Added transfer beam search.
-- Added chip evaluation.
-- Added sequential and walk-forward backtesting.
+- persistent autonomous team ledger;
+- public post-deadline state reconciliation;
+- pending-versus-committed team state;
+- automatic bank/free-transfer/chip continuity;
+- half-season chip-set handling;
+- out-of-sample xP calibration;
+- raw-versus-calibrated xP audit;
+- price-band calibration adjustment;
+- sparse new-player price/position prior;
+- selected-vs-omitted audit;
+- improved freshness diagnostics;
+- cacheable sequential backtest;
+- cacheable policy backtest;
+- autonomous calibration requirement;
+- model-led production mode;
+- robust position normalisation for historical `GKP`, numeric element types and `model_position`.
+
+### v1.2.x
+
+- Understat xG/xA integration;
+- robust FBref expected-stat fallbacks;
+- external-stat coverage audits;
+- goalkeeper xG/xA positional safeguard;
+- cache-backed Section 11.
+
+### v1.1.x
+
+- external new-signing priors;
+- player matching and overrides;
+- league-to-PL translation;
+- reliability weighting;
+- prior fade-out as PL evidence arrives.
+
+### v1.0.x
+
+- live FPL ingestion;
+- historical archive;
+- player-fixture modelling;
+- minutes forecasts;
+- team-strength models;
+- component xP;
+- squad/XI/captain optimisation;
+- transfer search;
+- chips;
+- deadline-frozen backtesting;
+- walk-forward validation;
+- weekly recommendation dashboard.
 
 ---
 
-## Disclaimer
+## Development principle
 
-This project is independent and is not affiliated with, endorsed by or sponsored by the Premier League or Fantasy Premier League.
+Every substantial change should satisfy:
 
-Forecasts are uncertain. Injuries, line-ups, postponements, tactical changes, transfers and random match events can materially change realised outcomes.
+```text
+1. It is leakage-safe.
+2. It improves or protects decision quality in historical validation.
+3. Production uses the same logic that was validated.
+```
+
+The goal is not maximum model complexity.
+
+The priority is reliable full-season decision quality through:
+
+```text
+better information
+better calibration
+better state handling
+better optimisation
+strict validation
+strict production safeguards
+```
