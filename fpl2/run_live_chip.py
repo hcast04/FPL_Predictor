@@ -37,8 +37,6 @@ HDR = {"User-Agent": "Mozilla/5.0"}
 SEASON = "2026-27"
 LIVE = Path.home() / "fpl2_live2627.pkl"
 PANEL = Path.home() / "fpl2_panel_us.pkl"
-# your FPL team id; public, but read from the environment so the repo
-# does not hardcode one person's team
 ENTRY = int(os.environ.get("FPL_ENTRY") or 0)   # export FPL_ENTRY=<your team id>
 
 
@@ -138,10 +136,42 @@ def main():
           f"{sorted(played) if played else 'NONE'}", flush=True)
 
     # --- the policy ----------------------------------------------------------
+    # THE POLICY'S HORIZON. `chips.rolling_policy` reads
+    # `visible = [g for g in present if gw <= g <= gw + KNOWN]` with KNOWN = 4,
+    # but `present` comes from the grid -- and a live grid holds only FINISHED
+    # gameweeks. So the policy ran with ONE week of visibility instead of the
+    # four its +119.8/season was measured with, and every chip's benefit was
+    # estimated from a single fixture. Fold the forward projection in so the
+    # unplayed weeks are present too.
     last = int(out["gameweek"].max())
-    grid = data.with_blanks(panel[panel["season"].eq(SEASON)], SEASON).merge(
-        out[["season", "gameweek", C.PLAYER_KEY, "xp"]],
-        on=["season", "gameweek", C.PLAYER_KEY], how="left")
+    fc = out[["season", "gameweek", C.PLAYER_KEY, "xp"]]
+    pjp = Path.home() / "fpl2_live_proj.pkl"
+    if pjp.exists():
+        pj = pd.read_pickle(pjp)
+        pj = pj[pj["gameweek"] > last][["season", "gameweek", C.PLAYER_KEY, "xp"]]
+        if not pj.empty:
+            fc = pd.concat([fc, pj], ignore_index=True)
+            print(f"  policy horizon: GW{last} + projected "
+                  f"GW{int(pj.gameweek.min())}-{int(pj.gameweek.max())}", flush=True)
+    else:
+        print("  !! no projection on disk -- the chip policy will see ONE week "
+              "instead of KNOWN=4. Run run_live_project.py first.", flush=True)
+    base = panel[panel["season"].eq(SEASON)]
+    gws = sorted(set(base["gameweek"]).union(fc["gameweek"]))
+    grid = data.with_blanks(base, SEASON)
+    future = fc[~fc["gameweek"].isin(base["gameweek"].unique())]
+    if not future.empty:
+        # unplayed weeks: carry cost/position/team forward, points unknown (0)
+        meta = (grid.sort_values("gameweek").groupby(C.PLAYER_KEY, as_index=False)
+                .agg(cost=("cost", "last"), position=("position", "last"),
+                     team=("team", "last")))
+        add = future.merge(meta, on=C.PLAYER_KEY, how="inner")
+        add["points"] = 0.0; add["minutes"] = 0.0; add["fixtures"] = 1.0
+        grid = pd.concat([grid, add], ignore_index=True, sort=False)
+    grid = grid.merge(fc, on=["season", "gameweek", C.PLAYER_KEY],
+                      how="left", suffixes=("", "_fc"))
+    if "xp_fc" in grid.columns:
+        grid["xp"] = grid["xp"].fillna(grid["xp_fc"])
     grid["xp"] = grid["xp"].fillna(0.0)
     grid.loc[grid["fixtures"] <= 0, "xp"] = 0.0
 

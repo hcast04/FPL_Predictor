@@ -62,9 +62,31 @@ def main():
     tm = {t["id"]: t["short_name"] for t in boot["teams"]}
     el["team"] = el.team_id.map(tm)
     el["position"] = el.etype.map({1: "GK", 2: "DEF", 3: "MID", 4: "FWD"})
-    last = int(out.gameweek.max())
-    xp = (out[out.gameweek.eq(last)].groupby("player_code", as_index=False)
-          .agg(xp=("xp", "mean")))
+    # THE GAMEWEEK BEING DECIDED, not the last one played.
+    #
+    # This read `out[gameweek == max]` -- the last FINISHED gameweek -- and
+    # presented it as the upcoming decision. Every number was therefore
+    # computed against last week's opponents. Van Hecke read 5.19 on a GW7
+    # fixture against Coventry and 2.42 on his actual GW8 fixture; Botman
+    # 4.57 against 2.17. The whole plan was a week stale.
+    target = int(nxt["id"])
+    proj_path = Path.home() / "fpl2_live_proj.pkl"
+    if proj_path.exists():
+        pr = pd.read_pickle(proj_path)
+        pr = pr[pr.gameweek.eq(target)]
+    else:
+        pr = pd.DataFrame()
+    if pr.empty:
+        last = int(out.gameweek.max())
+        print(f"!! NO PROJECTION FOR GW{target}. Falling back to the GW{last} "
+              f"forecast, which is computed against GW{last}'s opponents and "
+              f"is NOT a forecast of GW{target}. Run run_live_project.py first.\n")
+        xp = (out[out.gameweek.eq(last)].groupby("player_code", as_index=False)
+              .agg(xp=("xp", "mean")))
+    else:
+        xp = pr.groupby("player_code", as_index=False).agg(xp=("xp", "mean"))
+        print(f"forecast: GW{target} projection "
+              f"({len(xp):,} players, from GW{int(out.gameweek.max())} information)\n")
     pool = el.merge(xp, left_on="code", right_on="player_code", how="inner")
     pool = pool.drop(columns=["code"]).reset_index(drop=True)
     avail = pool[pool.status.eq("a") &
@@ -107,6 +129,12 @@ def main():
         cap = optimise.pick_captain(xi, "xp")
         return xi, cap, float(xi.xp.sum()) + float(cap.xp)
 
+    def vice(xi, cap):
+        """Second-highest xp in the XI. The armband moves here if the captain
+        does not play at all, so it is the same argmax rule one place down."""
+        rest = xi[xi.id.ne(cap.id)]
+        return rest.loc[rest.xp.idxmax()] if len(rest) else None
+
     xi, cap, base = best(squad)
     squad["role"] = np.where(squad.id.isin(xi.id), "XI", "BENCH")
     squad.loc[squad.id.eq(cap.id), "role"] = "CAPTAIN"
@@ -117,7 +145,10 @@ def main():
           .to_string(index=False, formatters={
               "cost": "£{:.1f}m".format, "xp": "{:.2f}".format,
               "owned": "{:.1f}%".format}))
-    print(f"\n  XI + captain = {base:.2f} xp   (captain {cap['name']} {cap.xp:.2f})")
+    vc = vice(xi, cap)
+    squad.loc[squad.id.eq(vc.id), "role"] = "VICE"
+    print(f"\n  XI + captain = {base:.2f} xp   (captain {cap['name']} {cap.xp:.2f},"
+          f" vice {vc['name']} {vc.xp:.2f})")
     bn = squad[squad.role.eq("BENCH")]
     print(f"  bench: {', '.join(bn.name)}  ({bn.xp.sum():.2f} xp)")
 
@@ -171,7 +202,10 @@ def main():
               "cost": "£{:.1f}m".format, "xp": "{:.2f}".format,
               "avail": "{}%".format}))
     nb = ns[ns.role.eq("BENCH")]
-    print(f"\n  captain {ncap['name']} {ncap.xp:.2f}")
+    nvc = vice(nxi.reset_index(drop=True), ncap)
+    ns.loc[ns.id.eq(nvc.id), "role"] = "VICE"
+    print(f"\n  captain {ncap['name']} {ncap.xp:.2f}   "
+          f"vice {nvc['name']} {nvc.xp:.2f}")
     print(f"  bench: {', '.join(nb.name)}  ({nb.xp.sum():.2f} xp)")
     print(f"  incoming {top['in']} -> "
           f"{'STARTS' if top['in'] in set(nxi.name) else 'BENCHED'}")

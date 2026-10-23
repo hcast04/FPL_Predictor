@@ -81,10 +81,36 @@ def main():
     el["team"] = el.team_id.map(teams)
     el["position"] = el.etype.map({1: "GK", 2: "DEF", 3: "MID", 4: "FWD"})
 
-    # opening_horizon = 1 (S57): the latest forecast, not an average over weeks
-    last = int(out.gameweek.max())
-    xp = (out[out.gameweek.eq(last)]
-          .groupby("player_code", as_index=False).agg(xp=("xp", "mean")))
+    # THE GAMEWEEK BEING DECIDED. This read the last FINISHED gameweek, so the
+    # squad was optimised against last week's opponents -- the same defect
+    # `plan_gw.py` had. Van Hecke read 5.19 on a GW7 fixture and 2.42 on his
+    # actual GW8 one.
+    #
+    # HORIZON. S57 swept this honestly and found SHORTER better: the +235/season
+    # for long horizons was F10's leak. So the default is the target week
+    # alone. WC_HORIZON>1 averages the projection over that many weeks, which
+    # S57 measured as worse for an opening squad but is offered because a
+    # mid-season wildcard has a known fixture list the GW1 decision does not.
+    target = int(nxt["id"])
+    H = int(os.environ.get("WC_HORIZON", "1"))
+    pjp = Path.home() / "fpl2_live_proj.pkl"
+    if pjp.exists():
+        pj = pd.read_pickle(pjp)
+        win = pj[(pj.gameweek >= target) & (pj.gameweek < target + H)]
+    else:
+        win = pd.DataFrame()
+    if win.empty:
+        last = int(out.gameweek.max())
+        print(f"!! NO PROJECTION for GW{target}; falling back to the GW{last} "
+              f"forecast, which prices GW{last}'s opponents. Run "
+              f"run_live_project.py first.\n")
+        xp = (out[out.gameweek.eq(last)]
+              .groupby("player_code", as_index=False).agg(xp=("xp", "mean")))
+    else:
+        got = sorted(int(g) for g in win.gameweek.unique())
+        print(f"forecast: GW{got[0]}" + (f"-{got[-1]} (mean)" if len(got) > 1 else "")
+              + f", projected from GW{int(out.gameweek.max())} information\n")
+        xp = win.groupby("player_code", as_index=False).agg(xp=("xp", "mean"))
     pool = el.merge(xp, left_on="code", right_on="player_code", how="inner")
     avail = pool[pool.status.eq("a") &
                  (pool.chance.isna() | (pool.chance >= MIN_CHANCE))].copy()
