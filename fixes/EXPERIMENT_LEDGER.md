@@ -4469,6 +4469,238 @@ already own.
 
 ---
 
+## S58 — CLUB CHANGE: the model carries a player's old club with him, 2026-10-23
+
+**The user's hypothesis**, from his own squad: Elliot Anderson is recommended
+on 180 points scored at Nottingham Forest and now plays for Manchester City;
+Enzo Fernandez carries 9,812 Chelsea minutes into the same move. Six of his
+fifteen players had changed club.
+
+### The bias is real and it lives in the RECOMMENDATIONS
+
+Ranking players by xp within each gameweek, 8 holdout seasons, bias = actual
+minus predicted:
+
+| xp rank | moved | stayed | gap | t | seasons |
+|---|---|---|---|---|---|
+| **top 10** | **-0.851** | -0.208 | **-0.818** | **-2.36** | **7/8** |
+| 11-30 | -0.355 | -0.166 | -0.239 | -0.88 | 5/8 |
+| 31-60 | -0.257 | -0.071 | -0.212 | -1.85 | 5/8 |
+| 61+ | +0.081 | +0.045 | +0.028 | +1.06 | 2/8 |
+
+**A top-10-ranked player who changed club is over-predicted by 0.85 points a
+gameweek -- about 32 points a season.** The gradient across rank bands is
+monotone and REVERSES SIGN outside the top 60: the bias exists precisely in
+the players the model tells you to own, and nowhere else.
+
+### The axis is TENURE, not the calendar -- which is why it was never found
+
+The user asked whether the effect decays through the season. By calendar
+gameweek it does not, cleanly:
+
+| gameweeks | 1-5 | 6-10 | 11-19 | 20-29 | 30-38 |
+|---|---|---|---|---|---|
+| gap | -1.248 | -0.640 | -0.474 | **-1.161** | -1.091 |
+
+It falls then returns, because **January signings reset the clock**. Keyed on
+tenure instead it is clean and monotone:
+
+| fixtures at current club | 0-9 | 10-24 | 25-49 | 50+ |
+|---|---|---|---|---|
+| bias | **-0.952** | -0.516 | -0.474 | **-0.140** |
+
+**A 7x decay from fresh signing to settled player.** n = 2,283 in the settled
+band, so the floor is well measured.
+
+**R47: when an effect decays, find the clock it decays on.** Season-long
+averages dilute this one ~7x, and the obvious diagnostic cut -- early season
+versus late -- actively HIDES it, because the natural covariate (calendar
+week) is a noisy proxy for the causal one (tenure). Two separate reasons this
+survived eight seasons of clustered testing.
+
+### Why the model cannot see it
+
+`features.py` carries three club-aware columns -- `changed_club`,
+`history_at_current_club_r5`/`_r10`, `fixtures_at_current_club` -- but after
+about five games at a new club `history_at_current_club_r5` reads 1.0 and
+stops flagging anything, while the **21 `*_career` columns carry the old
+club's output undiscounted for ever**.
+
+### Manager changes: UNTESTED, not refuted
+
+The user extended the hypothesis to managerial change, which alters the
+starting XI and the style. No manager data exists in the panel and
+`soccerdata`'s readers do not provide appointments. A proxy -- rolling churn
+in a team's starting XI -- came back null (high minus low churn **-0.139,
+t -0.91, p 0.395, 5/8**) and is too blunt to settle anything: mean churn is
+0.325, so a third of the XI changes every match from ordinary rotation, which
+swamps the ~10 genuine upheavals a season. **Testing it needs real appointment
+dates**, after which `fixtures_under_current_manager` is the same construction
+as `fixtures_at_current_club`.
+
+### Scope and honesty
+
+The "top 10" cut was chosen AFTER seeing the 150+-points result, so it is
+post-hoc; t = -2.36 sits exactly on the bar and p = 0.050 is as marginal as a
+result gets. The stayers are over-predicted too (-0.208), so part of this is
+general top-end optimism rather than a pure transfer effect.
+
+**The treatment is tested separately (O57) and a diagnosis is not a fix** --
+S54 and S56 both had confirmed mechanisms far larger than this one and
+delivered nothing.
+
+---
+
+## S59 / O57 — the tenure shrink WORKS and is worth +1.2 pts/season, 2026-10-23
+
+`fpl2/run_tenure.py`. The treatment for S58: shrink all 21 `*_career` features
+toward their TRAINING position mean by tenure at the current club,
+`w = n/(n+K)` with `n = fixtures_at_current_club`. K=0 is the shipped model
+and reproduced `m_full_us` bit-identically on all 8 seasons.
+
+### The gate — NULL
+
+Metric 1, 8 holdouts, K=10 squads, season-clustered, bar |t| > 2.36:
+
+| arm | mean | t | p | 95% CI | MDE | seasons |
+|---|---|---|---|---|---|---|
+| ten_K5 | +1.2 | 0.34 | 0.745 | [-6.9, +9.2] | 9.5 | 4/8 |
+| ten_K10 | +1.0 | 0.40 | 0.704 | [-4.9, +6.8] | **6.9** | 5/8 |
+| ten_K20 | +1.3 | 0.36 | 0.731 | [-7.1, +9.6] | 9.9 | 5/8 |
+| ten_K40 | +1.5 | 0.47 | 0.650 | [-6.0, +9.0] | 8.9 | 5/8 |
+
+Captain-only is the same story: -1.6 to +1.4 against MDEs of 4.2-6.0.
+
+### The treatment DOES work -- and my first measurement of that said the opposite
+
+| arm | moved | stayed | gap |
+|---|---|---|---|
+| ten_K0 (shipped) | -1.019 | -0.201 | **-0.818** |
+| ten_K5 | -0.943 | -0.245 | -0.697 |
+| ten_K10 | -0.919 | -0.264 | -0.655 |
+| ten_K20 | -0.891 | -0.301 | -0.590 |
+| ten_K40 | -0.861 | -0.336 | **-0.525** |
+
+**Monotone in K, closing the targeted gap by 36%**, movers improving and
+stayers giving a little back -- exactly the designed trade.
+
+**The first version of this table showed the gap WIDENING, and it was an R29
+violation of my own.** It ranked the top 10 by EACH ARM'S OWN xp, so the
+shrink demoted movers out of the band and the arms were scored on different
+populations:
+
+| arm | movers in the top 10 |
+|---|---|
+| ten_K0 | 195 (6.4%) |
+| ten_K40 | 138 (4.6%) |
+
+Fixing the population on the shipped arm's ranking reverses the conclusion.
+**R29 is in this ledger, written on 2026-10-21, and I broke it anyway** -- the
+rule is easy to state and easy to miss, because ranking by the arm under test
+is the obvious way to write the query.
+
+### Why a working fix is worth 1.2 points
+
+Top-10 movers are 6.4% of top-10 rows -- about 0.6 players per gameweek across
+the whole league, so a given manager owns well under one at a time. Removing
+36% of a -0.818 bias from a fraction of a player is worth roughly a point a
+season, and the gate measures +1.0 to +1.5 against an MDE of 6.9. **The
+arithmetic agrees with the measurement.**
+
+**Eighth occurrence of R31, and a distinct variety of it.** S54's ceiling and
+S56's conditional bonus were mechanisms that did not convert -- they moved the
+ranking by two places out of six hundred. This one converts correctly: it
+reorders, it demotes exactly the players it should, it closes the gap it
+targeted. **The quantity is simply small.** "Confirmed mechanism, correct
+treatment, measurable improvement in the targeted diagnostic, no points" is a
+failure mode worth naming separately.
+
+**R48: size the affected POPULATION before building the fix.** The bias was
+-0.85 pts/gameweek, which sounds material, and the population carrying it was
+0.6 players per gameweek league-wide. The product was always going to be ~1
+point. One query -- how many rows does this actually touch -- would have
+priced the ceiling before the experiment rather than after.
+
+**NOT SHIPPED.** `features.py` is unchanged. The diagnosis (S58) stands and is
+worth keeping: it explains why a top-10 recommendation who just moved clubs
+underperforms his forecast, which is useful for a human reading the output
+even when it is not worth encoding.
+
+---
+
+## S60 / O58 — TEAM PLAYING STYLE is worth nothing, and the shuffle proves it
+
+`fpl2/style.py`, `fpl2/run_style.py`. **The user's observation**: every team
+feature the model carries is an OUTCOME -- `team_scored_r5`,
+`team_conceded_r10`, the opponent twins. None describes HOW a side plays. A
+possession team working the ball into the box and a counter-attacking side
+crossing from deep can score at identical rates and offer their forwards
+completely different chances.
+
+36 features from match-level FBref: possession, shots, shots on target, SoT%,
+**goals per shot (quality separated from volume)**, crosses, interceptions,
+tackles won, fouls -- at r5 and r10, for the team and the opponent.
+
+| comparison | mean | t | p | 95% CI | MDE | seasons |
+|---|---|---|---|---|---|---|
+| style vs shipped | -3.1 | -0.70 | 0.507 | [-13.6, +7.4] | 12.4 | 3/8 |
+| SHUFFLED vs shipped | -3.2 | -1.14 | 0.293 | [-9.7, +3.4] | 7.8 | 3/8 |
+| **style vs SHUFFLED** | **+0.1** | **0.02** | **0.988** | [-9.1, +9.3] | 10.9 | 4/8 |
+
+**The real features and the same features scrambled between teams perform
+identically.** The information is worth +0.1 against an MDE of 10.9.
+
+### Why the control is the whole result
+
+Both arms lose the SAME -3.1 / -3.2 against the shipped model. That is the
+price of adding 36 columns to the fit, paid equally whether or not they mean
+anything. **Without the shuffle this reads as "team style costs 3 points a
+season", which is true of the columns and false of the information.** R26
+exists for exactly this and it has now earned its keep twice -- F16's
+Championship priors and this.
+
+### What was verified before the gate
+
+* **Leak test with a working negative control.** Every style value equals the
+  mean of STRICTLY EARLIER matches: 1,060 rows, 0 mismatches, while a
+  deliberately unshifted version fails 1,034 times.
+* **`sty_off` reproduces `m_full_us` bit-identically**, so the arms differ
+  only in features.
+* **Team mapping audited by eye**, all 20 names for 2024-25, after two earlier
+  approaches failed (below).
+
+### Three data defects found getting here
+
+1. **FBref returns `team` as NaN for this entire league.** The game id reads
+   `"2024-08-16 Manchester Utd-nan"`, the nan always being the row's own team.
+   Recovered by pairing each fixture's two rows on reversed scoreline and
+   reading each side's team off the other's `opponent`. Validated at 20 teams
+   x exactly 38 matches for all ten completed seasons.
+2. **Date-overlap team matching fails here.** Within a season all twenty clubs
+   play on roughly the same Saturdays, so the sets barely discriminate -- the
+   attempt mapped **Everton to Sunderland** at 0.62. The Understat join works
+   on dates because PLAYERS have distinctive date sets; teams do not.
+3. **`kickoff_first` is 0% non-null from 2022-23 onward**, so any date-based
+   join silently drops four seasons. The style join uses match ORDER within a
+   team-season instead.
+
+**R49: a join key that works for one entity can be useless for another.**
+Fixture dates identify a player and cannot identify a club, because every club
+in the league shares a calendar. The method was carried over from the
+Understat join without asking whether the discriminating power survived the
+change of entity.
+
+**Coverage, stated:** 95.2% of panel rows; 99-100% from 2019-20, but 76-89%
+in 2016-19 because the legacy adapter left placeholder names (`Team 110`,
+`Team 25`...) for six club-seasons it could not resolve. Those seasons are
+training-only for the gate's holdouts.
+
+**NOT SHIPPED.** `features.py` unchanged. `style.py` is kept: the puller, the
+team recovery and the leak-tested rolling are reusable if a better style
+question comes along.
+
+---
+
 # Appendix — script index
 
 | Script | Answers |
