@@ -43,6 +43,13 @@ tests/           81 tests, including truncation-equivalence leak tests
 
 ## Weekly use
 
+Set your FPL team id once — it is the number in
+`fantasy.premierleague.com/entry/<id>/`:
+
+```bash
+export FPL_ENTRY=1234567
+```
+
 ```bash
 python fpl2/run_live_chip.py       # rebuild the forecast, ask the chip policy
 python fpl2/run_live_project.py    # project the next four gameweeks

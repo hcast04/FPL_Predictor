@@ -39,7 +39,7 @@ LIVE = Path.home() / "fpl2_live2627.pkl"
 PANEL = Path.home() / "fpl2_panel_us.pkl"
 # your FPL team id; public, but read from the environment so the repo
 # does not hardcode one person's team
-ENTRY = int(os.environ.get("FPL_ENTRY", "3642415"))
+ENTRY = int(os.environ.get("FPL_ENTRY") or 0)   # export FPL_ENTRY=<your team id>
 
 
 def api(p):
@@ -57,6 +57,14 @@ class _WP:
     def fit(self, X, y, sample_weight=None):
         self.est.fit(self.pre.fit_transform(X), y, sample_weight=sample_weight); return self
     def predict(self, X): return self.est.predict(self.pre.transform(X))
+
+
+def _entry():
+    if not ENTRY:
+        raise SystemExit(
+            "set your FPL team id first:  export FPL_ENTRY=1234567\n"
+            "(it is the number in fantasy.premierleague.com/entry/<id>/)")
+    return ENTRY
 
 
 def main():
@@ -120,11 +128,11 @@ def main():
 
     # --- the real squad ------------------------------------------------------
     el = {e["id"]: e for e in boot["elements"]}
-    picks = api(f"entry/{ENTRY}/event/{max(finished)}/picks/")
+    picks = api(f"entry/{_entry()}/event/{max(finished)}/picks/")
     ids = [p["element"] for p in picks["picks"]]
     squad = [el[i]["code"] for i in ids if i in el]
     used = {c["name"] for c in (picks.get("active_chip") and [{"name": picks["active_chip"]}] or [])}
-    hist_api = api(f"entry/{ENTRY}/history/")
+    hist_api = api(f"entry/{_entry()}/history/")
     played = {c["name"] for c in hist_api.get("chips", [])}
     print(f"\nsquad: {len(squad)} players | chips already played: "
           f"{sorted(played) if played else 'NONE'}", flush=True)

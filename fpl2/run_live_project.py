@@ -26,7 +26,7 @@ from fpl2 import (config as C, chips, data, features, live, model,  # noqa: E402
 API = "https://fantasy.premierleague.com/api"
 HDR = {"User-Agent": "Mozilla/5.0"}
 SEASON = "2026-27"
-ENTRY = int(os.environ.get("FPL_ENTRY", "3642415"))
+ENTRY = int(os.environ.get("FPL_ENTRY") or 0)   # export FPL_ENTRY=<your team id>
 LIVE = Path.home() / "fpl2_live2627.pkl"
 HORIZON = 4
 
@@ -46,6 +46,14 @@ class _WP:
     def fit(self, X, y, sample_weight=None):
         self.est.fit(self.pre.fit_transform(X), y, sample_weight=sample_weight); return self
     def predict(self, X): return self.est.predict(self.pre.transform(X))
+
+
+def _entry():
+    if not ENTRY:
+        raise SystemExit(
+            "set your FPL team id first:  export FPL_ENTRY=1234567\n"
+            "(it is the number in fantasy.premierleague.com/entry/<id>/)")
+    return ENTRY
 
 
 def main():

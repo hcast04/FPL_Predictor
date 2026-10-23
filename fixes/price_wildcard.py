@@ -23,7 +23,7 @@ import gzip, json, sys, urllib.request
 import numpy as np, pandas as pd
 from scipy.optimize import milp, LinearConstraint, Bounds
 
-TID = 3642415
+TID = int(os.environ.get("FPL_ENTRY") or 0)   # export FPL_ENTRY=<your id>
 QUOTA = {"GK": 2, "DEF": 5, "MID": 5, "FWD": 3}
 MAX_CLUB = 3
 PT = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}

@@ -28,7 +28,7 @@ from fpl2 import config as C, optimise                               # noqa: E40
 
 API = "https://fantasy.premierleague.com/api"
 HDR = {"User-Agent": "Mozilla/5.0"}
-ENTRY = int(os.environ.get("FPL_ENTRY", "3642415"))
+ENTRY = int(os.environ.get("FPL_ENTRY") or 0)   # export FPL_ENTRY=<your team id>
 MIN_CHANCE, MIN_GAIN = 75, 0.30
 
 
@@ -37,12 +37,20 @@ def get(u):
         urllib.request.Request(u, headers=HDR), timeout=60))
 
 
+def _entry():
+    if not ENTRY:
+        raise SystemExit(
+            "set your FPL team id first:  export FPL_ENTRY=1234567\n"
+            "(it is the number in fantasy.premierleague.com/entry/<id>/)")
+    return ENTRY
+
+
 def main():
     out = pd.read_pickle(Path.home() / "fpl2_live_chip_out.pkl")
     boot = get(f"{API}/bootstrap-static/")
     finished = sorted(e["id"] for e in boot["events"] if e.get("finished"))
     nxt = next(e for e in boot["events"] if e.get("is_next"))
-    picks = get(f"{API}/entry/{ENTRY}/event/{max(finished)}/picks/")
+    picks = get(f"{API}/entry/{_entry()}/event/{max(finished)}/picks/")
     bank = picks["entry_history"]["bank"] / 10.0
 
     el = pd.DataFrame([{

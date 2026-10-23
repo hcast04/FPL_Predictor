@@ -36,7 +36,7 @@ from fpl2 import config as C, optimise                               # noqa: E40
 
 API = "https://fantasy.premierleague.com/api"
 HDR = {"User-Agent": "Mozilla/5.0"}
-ENTRY = 3642415
+ENTRY = int(os.environ.get("FPL_ENTRY") or 0)   # export FPL_ENTRY=<your team id>
 MIN_CHANCE = 75          # drop anyone below this chance of playing
 
 
@@ -45,12 +45,20 @@ def get(u):
         urllib.request.Request(u, headers=HDR), timeout=60))
 
 
+def _entry():
+    if not ENTRY:
+        raise SystemExit(
+            "set your FPL team id first:  export FPL_ENTRY=1234567\n"
+            "(it is the number in fantasy.premierleague.com/entry/<id>/)")
+    return ENTRY
+
+
 def main():
     out = pd.read_pickle(Path.home() / "fpl2_live_chip_out.pkl")
     boot = get(f"{API}/bootstrap-static/")
     finished = sorted(e["id"] for e in boot["events"] if e.get("finished"))
     nxt = next((e for e in boot["events"] if e.get("is_next")), None)
-    picks = get(f"{API}/entry/{ENTRY}/event/{max(finished)}/picks/")
+    picks = get(f"{API}/entry/{_entry()}/event/{max(finished)}/picks/")
     bank = picks["entry_history"]["bank"] / 10.0
     value = picks["entry_history"]["value"] / 10.0
     # `entry_history.value` is the PURCHASE-price valuation. A wildcard sells
