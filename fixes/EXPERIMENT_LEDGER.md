@@ -4701,6 +4701,84 @@ question comes along.
 
 ---
 
+## S61 / O59 — F4 CONFIRMED: more data still wins, but not monotonically
+
+`fpl2/run_window.py`. **F4** said: *"Recency: train on the last X gameweeks
+only. More data wins MONOTONICALLY. Best X beats 'all' in 1/3 seasons.
+Rejected."* Re-run because F4 was G=3 on the instrument S37 proved unfit, and
+because M26/M27 removed its confound: when F4 ran, the rate layer had no xG
+target before 2022-23, so "more data" literally meant "more Opta data".
+Understat now covers all ten seasons, so the comparison is clean.
+
+Arms train on the last N seasons before the holdout. FEATURES are unchanged
+across arms -- a rolling career mean is a property of the player, not of the
+training window -- so only the rows the estimator fits on differ.
+
+| arm | seasons | mean | t | p | 95% CI | MDE | wins |
+|---|---|---|---|---|---|---|---|
+| win_1 | 1 | -4.9 | -1.26 | 0.248 | [-14.0, +4.3] | 10.8 | 2/8 |
+| win_2 | 2 | -5.2 | -1.46 | 0.187 | [-13.7, +3.2] | 10.0 | 2/8 |
+| win_3 | 3 | -4.3 | -1.32 | 0.227 | [-12.0, +3.4] | 9.1 | 2/8 |
+| win_5 | 5 | **-5.5** | -2.59 | **0.036** | [-10.5, -0.5] | 5.9 | **0/8** |
+| win_all | all | reference | | | | | |
+
+**Every restricted window loses.** All ten seasons are worth ~5 pts/season
+over the best alternative -- small, consistent, free. **F4's VERDICT is
+confirmed and its MECHANISM is not.**
+
+### The shape does not reproduce, and that is the informative part
+
+F4 recorded the effect as *monotonic in window length*. It is not: -4.9,
+-5.2, -4.3, -5.5 is flat, not graded. The monotonicity was almost certainly
+the Opta confound -- in 2026-10-21's codebase a longer window really did mean
+proportionally more xG coverage, so "more data" and "more attacking signal"
+were the same axis. They are now separable and only the first survives.
+
+**Checked automatically.** `verify.dose_response` returned
+`monotone=False, peak_at_boundary=False -> suspect_leak=False`. The R38 test
+ran without anyone remembering to run it, which is the entire point of the
+harness.
+
+### Standing
+
+Fourth re-test of a pre-calibration finding today. **S47 reversed; F7, F9,
+F10 and now F4 confirmed.** One reversal in five. That ratio is worth keeping
+in mind before re-running the rest of the old ledger: the instrument change
+mattered enormously for one finding and not at all for four.
+
+---
+
+## Verification harness — the ledger's rules as code, 2026-10-23
+
+`fpl2/verify.py`, 13 tests in `fpl2/tests/test_verify.py`.
+
+**Four rules were broken on 2026-10-23 by the person who wrote them**: R29
+(a grouping whose membership changes with the treatment), R26 (no negative
+control), R38 (a monotone dose-response is a leak until proven otherwise) and
+R43 (a correction monotone in the score cannot reorder it). Each cost between
+twenty minutes and two hours. **A rule you have to remember is a rule you
+will break.**
+
+| function | what it catches |
+|---|---|
+| `reference_identical` | an arm that should reproduce the shipped model and does not -- caught a real cross-arm state leak AND a non-bug (HistGradientBoosting is thread-count dependent: 0.0016 at 8 threads, 0.0000 at 4) |
+| `reorders` | R43. Ceiling rho 0.9998, conditional bonus rho 0.9998 -- both would have been priced at zero BEFORE the experiment |
+| `stable_population` | R29. The tenure test scored arms on 195 vs 138 rows and inverted its own result |
+| `dose_response` | R38. Flags the horizon sweep's monotone-to-+313 |
+| `price_ceiling` | R48. -0.85/gw on 6.4% of rows is ~1 point whatever the mechanism looks like |
+| `strictly_lagged` | a leak test that also proves it CAN fail |
+| `clustered` | refuses G=1 rather than dividing by zero, and always reports the MDE |
+
+**Each test replays the real defect with the real numbers**, so the checks are
+proven to fire rather than merely to pass. 94 tests green.
+
+**R50: a rule that lives only in prose will be broken by its own author.**
+Seven months of this ledger produced rules that were then violated the same
+week they were written. The ones that now exist as functions cannot be
+forgotten; the rest still can.
+
+---
+
 # Appendix — script index
 
 | Script | Answers |
