@@ -2,11 +2,21 @@
 
 A full-season Fantasy Premier League forecasting and decision engine.
 
-> **`fpl2/` is a rewrite of this engine as a tested Python package.** It is
+> ### `fpl2/` — the rebuild
+>
+> **[`fpl2/`](fpl2/) is a rewrite of this engine as a tested Python package**,
 > gated on a calibrated instrument over ten seasons with season-clustered
-> errors, and it retracts several findings this notebook shipped. See
-> [`fpl2/README.md`](fpl2/README.md) and
-> [`fixes/EXPERIMENT_LEDGER.md`](fixes/EXPERIMENT_LEDGER.md).
+> errors. It retracts several findings this notebook shipped.
+>
+> Of everything measured there, **four things beat the baseline**: chip timing
+> (+119.8/season), making transfers at all (~+245 vs holding), the
+> per-position rate layer (+17.4), and ten seasons of training data (~+5).
+> Twenty-five model architectures, eight captaincy rules, team playing style,
+> transfer thresholds, bench weight and ownership weighting all measured zero.
+>
+> See [`fpl2/README.md`](fpl2/README.md) for how to run it and
+> [`fixes/EXPERIMENT_LEDGER.md`](fixes/EXPERIMENT_LEDGER.md) for every
+> experiment, including the refuted ones.
 
 The notebook is designed to make one authoritative decision before every FPL deadline:
 
