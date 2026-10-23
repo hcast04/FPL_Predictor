@@ -1,0 +1,10 @@
+if (
+    WEEKLY_STRICT_FRESHNESS_CHECK
+    and not weekly_freshness["is_fresh"]
+):
+    raise RuntimeError(
+        "The official FPL API has changed since the live "
+        "projection cells were run. Rerun the notebook through "
+        "Section 10, then run Section 12 again. "
+        f"Freshness audit: {weekly_freshness}"
+    )

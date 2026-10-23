@@ -1,0 +1,1 @@
+        threshold = float(CHIP_MINIMUM_UPLIFT[chip_name])

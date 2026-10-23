@@ -1,0 +1,113 @@
+def _v26_triage_freshness(freshness, minutes_threshold=30.0):
+    """Split API changes into material and immaterial, and refresh prices.
+
+    Material   = an availability change (status / chance / news) for a player
+                 the model projects at >= `minutes_threshold` next gameweek,
+                 i.e. someone who could already be owned or could be bought.
+    Immaterial = a price-only move, or an availability change for a player with
+                 no projected role.
+
+    Price moves are refreshed into the live frame rather than ignored, so
+    affordability stays correct. A 0.1 move does not cross a calibration price
+    band (5.0 / 6.5 / 8.0 / 10.0), so the applied calibration stays valid.
+    """
+    changed = freshness.get("changed_players") or []
+    live = globals().get("live_expected_points")
+    target_gw = freshness.get("projected_next_gameweek")
+
+    minutes_by_player = {}
+    if isinstance(live, pd.DataFrame) and "player_id" in live.columns:
+        nxt = live[pd.to_numeric(live.get("gameweek"), errors="coerce") == target_gw]
+        if nxt.empty:
+            nxt = live
+        minutes_by_player = nxt.groupby("player_id")["expected_minutes"].max().to_dict()
+
+    material, immaterial, repriced = [], [], 0
+    for row in changed:
+        fields = set(row.get("changed_fields") or [])
+        pid = row.get("player_id")
+        mins = float(minutes_by_player.get(pid, 0.0) or 0.0)
+
+        if "price" in fields and isinstance(live, pd.DataFrame) and \
+                "player_id" in live.columns and "price" in live.columns:
+            latest = row.get("latest_price")
+            try:
+                latest = float(latest)
+            except (TypeError, ValueError):
+                latest = None
+            if latest is not None and np.isfinite(latest):
+                mask = live["player_id"] == pid
+                if mask.any():
+                    live.loc[mask, "price"] = latest
+                    repriced += 1
+
+        if (fields & {"status", "chance", "news"}) and mins >= minutes_threshold:
+            material.append((row, mins))
+        else:
+            immaterial.append((row, mins))
+
+    return material, immaterial, repriced
+
+
+if WEEKLY_STRICT_FRESHNESS_CHECK and not weekly_freshness["is_fresh"]:
+    # These two can never be triaged away: the whole projection set is wrong.
+    if weekly_freshness.get("latest_next_gameweek") != \
+            weekly_freshness.get("projected_next_gameweek"):
+        raise RuntimeError(
+            "The gameweek rolled over while the notebook was running. "
+            "Rerun the notebook through Section 10, then run Section 12. "
+            "Freshness audit: " + str(weekly_freshness)
+        )
+    if weekly_freshness.get("changed_fixture_rows", 0):
+        raise RuntimeError(
+            "Fixture scheduling changed since the projections were built. "
+            "Rerun the notebook through Section 10, then run Section 12. "
+            "Changed fixtures: " + str(weekly_freshness.get("changed_fixtures"))
+        )
+
+    if globals().get("V26_ENABLED", False):
+        _v26_material, _v26_immaterial, _v26_repriced = _v26_triage_freshness(
+            weekly_freshness
+        )
+    else:
+        _v26_material = [
+            (r, float("nan"))
+            for r in (weekly_freshness.get("changed_players") or [])
+        ]
+        _v26_immaterial, _v26_repriced = [], 0
+
+    print(
+        "[v2.6] FPL API moved since the projections were built: "
+        + str(weekly_freshness.get("changed_player_rows"))
+        + " player row(s)"
+    )
+    for _row, _mins in _v26_immaterial:
+        print(
+            "       immaterial: "
+            + str(_row.get("player"))
+            + " "
+            + str(_row.get("changed_fields"))
+            + " (projected " + format(_mins, ".0f") + " min)"
+        )
+    if _v26_repriced:
+        print(
+            "       refreshed " + str(_v26_repriced)
+            + " price(s) into the live frame"
+        )
+
+    if _v26_material:
+        for _row, _mins in _v26_material:
+            print(
+                "       MATERIAL: "
+                + str(_row.get("player"))
+                + " "
+                + str(_row.get("changed_fields"))
+                + " (projected " + format(_mins, ".0f") + " min)"
+            )
+        raise RuntimeError(
+            "Availability changed for players the model projects to play. "
+            "Rerun the notebook through Section 10, then run Section 12. "
+            "Material changes: " + str([r for r, _ in _v26_material])
+        )
+
+    print("[v2.6] no material change - proceeding without a rerun")

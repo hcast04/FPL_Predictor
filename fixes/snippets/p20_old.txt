@@ -1,0 +1,3 @@
+    candidates_now = current_comparison.loc[
+        current_comparison["passes_use_now_rule"]
+    ].sort_values("normalised_strength", ascending=False)

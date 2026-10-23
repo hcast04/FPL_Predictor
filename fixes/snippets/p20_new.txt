@@ -1,0 +1,31 @@
+    # v2.6 P20 — order forced chips by what is lost by waiting, not by
+    # normalised_strength.
+    #
+    # At horizon 1 evaluate_wildcard_at and evaluate_free_hit_at solve the same
+    # one-gameweek problem, so their uplifts are identical by construction
+    # (confirmed in production: both 3.8910851937150426). normalised_strength is
+    # uplift / threshold, so the wildcard's larger bar (10.0 vs 8.0) always sorts
+    # it BELOW the free hit — and with P19 suppressing it the ratio is 0.0, so it
+    # sorts dead last. Under an expiry cascade that schedules the wildcard into the
+    # final week before the chip set resets, which is the worst possible week for
+    # the one chip whose value scales with the number of weeks remaining.
+    #
+    # Only under expiry pressure does ordering matter (otherwise a single chip
+    # qualifies on merit). There, play the wildcard first: it buys a better squad
+    # for every remaining week, and it makes the single-gameweek chips that follow
+    # worth more. Normal merit-based ordering is untouched.
+    _p20_forced = expiry_pressure_at(next_gameweek)
+    candidates_now = current_comparison.loc[
+        current_comparison["passes_use_now_rule"]
+    ].copy()
+    if _p20_forced and len(candidates_now) > 1:
+        candidates_now["_p20_priority"] = (
+            candidates_now["chip"].eq("wildcard").astype(int)
+        )
+        candidates_now = candidates_now.sort_values(
+            ["_p20_priority", "normalised_strength"], ascending=[False, False]
+        )
+    else:
+        candidates_now = candidates_now.sort_values(
+            "normalised_strength", ascending=False
+        )

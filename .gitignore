@@ -1,0 +1,12 @@
+# fpl2 rebuild: environment and regenerable data
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+*.pkl
+*.zip
+# the 541 MB working data tree (FPL exports, Understat cache, fold caches) is
+# rebuilt by the collectors and is not source
+/fpl2/data/
+/fixes/data/

@@ -1,0 +1,3 @@
+        remaining_weeks = max(1, int(expiry) - int(gameweek) + 1)
+        remaining_chips = sum(bool(v) for v in WEEKLY_AVAILABLE_CHIPS.values())
+        return bool(remaining_chips >= remaining_weeks)

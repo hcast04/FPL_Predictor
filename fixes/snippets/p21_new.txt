@@ -1,0 +1,14 @@
+        # v2.6 P21 — start the expiry cascade with one week of slack.
+        #
+        # `remaining_chips >= remaining_weeks` is the must-start-now boundary, not
+        # a margin: with 4 chips it first fires at GW16, leaving exactly four weeks
+        # for four chips and no recovery room. One missed or disrupted week then
+        # loses a chip permanently — and a free hit blocks the following gameweek,
+        # so a late free hit can strand another chip by itself.
+        #
+        # With zero doubles and blanks on the calendar, chip value is roughly flat
+        # across GW15-19, so buying a spare week costs almost nothing.
+        remaining_weeks = max(1, int(expiry) - int(gameweek) + 1)
+        remaining_chips = sum(bool(v) for v in WEEKLY_AVAILABLE_CHIPS.values())
+        _p21_slack = int(globals().get("V26_CHIP_EXPIRY_SLACK", 1))
+        return bool(remaining_chips >= remaining_weeks - _p21_slack)

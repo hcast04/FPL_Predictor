@@ -1,0 +1,33 @@
+        # v2.6 P18 — expiry-pressure override, mirroring the backtest.
+        #
+        # The sequential backtest (cell 166) gates on
+        #     clears_uplift = option["uplift"] >= threshold or expiry_pressure
+        # but this weekly production path had no such override: `passes` required
+        # the uplift threshold unconditionally. `expiry_pressure_at()` was used
+        # only further down, where it can REMOVE a candidate (the coarse-lookahead
+        # veto) and never admit one. Net effect: if no chip cleared its threshold,
+        # no chip could ever be played — including in the final week before the
+        # chips expire. That is the ~92 points/season "chips expire unused"
+        # failure mode, and it was live.
+        #
+        # Under expiry pressure the structural-readiness gate downstream already
+        # returns True (it contains `or expiry_pressure`), so admitting the chip
+        # here is consistent with the rest of the chain rather than bypassing it.
+        _p18_expiry = expiry_pressure_at(next_gameweek)
+        passes = (
+            chip_is_eligible(chip_name, next_gameweek)
+            and np.isfinite(current_uplift)
+            # Positive-uplift floor: playing a chip worth <= 0 is strictly
+            # worse than letting it expire. FH/WC uplifts really can go
+            # negative (an executed run showed wildcard -0.276), because the
+            # chip squad is rebuilt at current market prices while the held
+            # squad was bought at purchase prices.
+            and (
+                current_uplift >= threshold
+                or (_p18_expiry and current_uplift > 0.0)
+            )
+            and (
+                _p18_expiry
+                or (np.isfinite(ratio) and ratio >= CHIP_CURRENT_VS_HORIZON_RATIO)
+            )
+        )

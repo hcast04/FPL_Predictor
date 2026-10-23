@@ -1,0 +1,29 @@
+        threshold = float(CHIP_MINIMUM_UPLIFT[chip_name])
+
+        # v2.6 P19 — the wildcard uplift is on a different scale from the others.
+        #
+        # triple_captain_uplift, bench_boost_uplift and the free-hit uplift are all
+        # SINGLE-GAMEWEEK quantities, so their 7.0 / 9.0 / 8.0 bars are per-gameweek
+        # and correct at any horizon. wildcard_horizon_uplift is a DISCOUNTED SUM
+        # over the remaining horizon (cell 146: horizon_score - baseline_horizon).
+        #
+        # The identical constants {7,9,8,10} appear as BACKTEST_CHIP_MINIMUM_UPLIFT
+        # where BACKTEST_HORIZON = 6, so the wildcard's 10.0 was exercised against a
+        # six-gameweek sum (discount weights sum to 5.431). The live policy
+        # greedy_1gw_no_hits runs at horizon 1, so the same 10.0 is being applied to
+        # a one-gameweek number — roughly 5.4x too strict.
+        #
+        # Rescaling it is NOT the right fix: at horizon 1 the wildcard "uplift" just
+        # measures a one-week squad reshuffle and ignores that you keep the squad,
+        # so a scaled bar would fire the wildcard on a few points of one-week gain.
+        # The honest position is that a wildcard cannot be judged at horizon 1 at
+        # all. It is therefore suppressed explicitly and visibly, instead of being
+        # suppressed by accident via a mis-scaled constant — and the P18 expiry
+        # override still forces it out before it can expire unused.
+        _p19_suppressed = False
+        if chip_name == "wildcard" and len(gameweeks_to_use) < int(
+            globals().get("V26_WILDCARD_MIN_HORIZON", 3)
+        ):
+            _p19_suppressed = not expiry_pressure_at(next_gameweek)
+            if _p19_suppressed:
+                threshold = float("inf")

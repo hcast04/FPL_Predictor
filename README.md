@@ -2,6 +2,12 @@
 
 A full-season Fantasy Premier League forecasting and decision engine.
 
+> **`fpl2/` is a rewrite of this engine as a tested Python package.** It is
+> gated on a calibrated instrument over ten seasons with season-clustered
+> errors, and it retracts several findings this notebook shipped. See
+> [`fpl2/README.md`](fpl2/README.md) and
+> [`fixes/EXPERIMENT_LEDGER.md`](fixes/EXPERIMENT_LEDGER.md).
+
 The notebook is designed to make one authoritative decision before every FPL deadline:
 
 - initial 15-player squad;

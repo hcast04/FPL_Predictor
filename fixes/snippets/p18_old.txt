@@ -1,0 +1,7 @@
+        passes = (
+            chip_is_eligible(chip_name, next_gameweek)
+            and np.isfinite(current_uplift)
+            and current_uplift >= threshold
+            and np.isfinite(ratio)
+            and ratio >= CHIP_CURRENT_VS_HORIZON_RATIO
+        )
