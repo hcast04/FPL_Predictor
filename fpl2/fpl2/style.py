@@ -182,3 +182,72 @@ def build(panel: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     print(f"style: {len(m)} team-seasons mapped, feature coverage "
           f"{cov*100:.1f}% of panel rows")
     return out.drop(columns=["mno", "_opp", "_omno"], errors="ignore"), made
+
+
+# --------------------------------------------------------------------------
+# S58 -- the club-change reading aid
+# --------------------------------------------------------------------------
+def club_tenure(panel: pd.DataFrame, season: str) -> pd.DataFrame:
+    """
+    Per player: matches at the CURRENT club, and the bias to expect.
+
+    S58 measured a top-10-ranked player who changed club at **-0.85 points a
+    gameweek** against -0.21 for one who stayed, decaying 7x with tenure:
+
+        fixtures at club   0-9    10-24   25-49   50+
+        bias              -0.95   -0.52   -0.47   -0.14
+
+    S59 built the correction and it is worth +1.0 against an MDE of 6.9 -- a
+    null, and it DROPS Haaland, because shrinking toward a mean costs the
+    outliers most. So this is not encoded in the model. It is surfaced in the
+    output instead, because a human reading a recommendation can discount it
+    where a MILP maximising expected points cannot.
+    """
+    p = panel[panel["minutes"] > 0]
+    hist = (p.groupby([C.PLAYER_KEY, "season"], as_index=False)
+            .agg(team=("team", "first")).sort_values([C.PLAYER_KEY, "season"]))
+    hist["prev"] = hist.groupby(C.PLAYER_KEY)["team"].shift(1)
+    cur = hist[hist["season"].eq(season)].copy()
+    cur["moved"] = cur["prev"].notna() & cur["prev"].ne(cur["team"])
+    n = (p[p["season"].eq(season)].groupby(C.PLAYER_KEY)["gameweek"]
+         .nunique().rename("tenure_season"))
+    allt = (p.groupby([C.PLAYER_KEY, "team"])["gameweek"].count()
+            .rename("at_club").reset_index())
+    cur = cur.merge(allt, on=[C.PLAYER_KEY, "team"], how="left")
+    cur = cur.merge(n, left_on=C.PLAYER_KEY, right_index=True, how="left")
+
+    def bias(row):
+        if not row["moved"]:
+            return -0.14
+        t = row.get("at_club") or 0
+        return -0.95 if t < 10 else -0.52 if t < 25 else -0.47 if t < 50 else -0.14
+
+    cur["expected_bias"] = cur.apply(bias, axis=1)
+    return cur[[C.PLAYER_KEY, "moved", "at_club", "prev", "expected_bias"]]
+
+
+def live_movers(panel: pd.DataFrame, now: pd.DataFrame,
+                code_col: str = "player_code", team_col: str = "team"):
+    """
+    Who changed club into the CURRENT season, which is not in the panel yet.
+
+    `panel` is the historical panel; `now` is today's player list with its
+    live club. Returns a frame with the previous club, matches played there,
+    and the bias S58 measured for that tenure band.
+    """
+    p = panel[panel["minutes"] > 0]
+    last = p["season"].max()
+    prev = (p[p["season"].eq(last)].groupby(C.PLAYER_KEY)[team_col]
+            .agg(lambda s: s.mode().iloc[0] if len(s.mode()) else None)
+            .rename("prev_team"))
+    played = (p.groupby([C.PLAYER_KEY, team_col])["gameweek"].count()
+              .rename("at_prev").reset_index())
+    out = now.merge(prev, left_on=code_col, right_index=True, how="left")
+    out = out.merge(played.rename(columns={team_col: "prev_team"}),
+                    left_on=[code_col, "prev_team"],
+                    right_on=[C.PLAYER_KEY, "prev_team"], how="left")
+    out["moved"] = out["prev_team"].notna() & out["prev_team"].ne(out[team_col])
+    # a mover starts the season on 0 matches at the new club, so the GW8
+    # reading is the 0-9 band
+    out["bias"] = np.where(out["moved"], -0.95, -0.14)
+    return out[[code_col, "moved", "prev_team", "bias"]]

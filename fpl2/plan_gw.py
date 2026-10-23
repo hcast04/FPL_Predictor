@@ -110,6 +110,27 @@ def main():
 
     ids = [p["element"] for p in picks["picks"]]
     squad = adjust(pool[pool.id.isin(ids)]).reset_index(drop=True)
+    # S58 reading aid: a top-rated player who just changed club is
+    # over-predicted by ~0.85 pts/gameweek, decaying with tenure. The
+    # correction measured +1.0 against an MDE of 6.9 and DROPPED Haaland, so
+    # it is not in the model -- it is surfaced here, where a human can
+    # discount it and a MILP cannot.
+    try:
+        from fpl2 import style as _sty
+        _panel = pd.read_pickle(Path.home() / "fpl2_panel_us.pkl")
+        _mv = _sty.live_movers(_panel, squad[["player_code", "team"]])
+        squad = squad.merge(_mv, on="player_code", how="left")
+        _m = squad[squad["moved"].fillna(False)]
+        if len(_m):
+            print("CHANGED CLUB this season (S58: top-10 movers run ~0.85 "
+                  "pts/gw below forecast):")
+            for _, r in _m.sort_values("xp", ascending=False).iterrows():
+                print(f"   {r['name']:<16} {r['prev_team']} -> {r['team']}"
+                      f"   xp {r['xp']:.2f}")
+            print()
+    except Exception as e:                                    # noqa: BLE001
+        print(f"(club-change flag unavailable: {type(e).__name__})\n")
+
     flagged = squad[squad.avail < 100]
     if len(flagged):
         print("FLAGGED in your squad (xp scaled by chance of playing):")
