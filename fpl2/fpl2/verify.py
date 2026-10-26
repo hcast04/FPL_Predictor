@@ -145,18 +145,27 @@ def dose_response(doses, effects, name: str = "dose-response") -> dict:
 # R48 -- size the affected population before building the fix
 # --------------------------------------------------------------------------
 def price_ceiling(per_unit_effect: float, affected_rows: int,
-                  total_rows: int, units_per_season: float = 38.0) -> dict:
+                  total_rows: int, slots: int = 1,
+                  units_per_season: float = 38.0) -> dict:
     """
     What is the most this fix could possibly be worth?
 
     S58 measured a -0.85 pts/gameweek bias, which sounds material. The
     population carrying it was 0.6 players per gameweek league-wide, so the
     product was always ~1 point. The gate agreed: +1.0 against an MDE of 6.9.
+
+    `slots` is how many XI places the effect applies to AT ONCE. A bias
+    affecting every pick you own takes slots=11; a vice-captain rule takes
+    slots=1. Getting this wrong is how the first version of this function
+    priced a one-slot decision at 223 pts/season instead of 20 -- on its first
+    real use, which is a fair illustration of why the harness needs its own
+    tests.
     """
     share = affected_rows / max(total_rows, 1)
-    per_gw = abs(per_unit_effect) * share * 11.0      # an XI, not the league
-    return {"affected_share": share, "ceiling_per_season": per_gw * units_per_season,
-            "note": "upper bound: assumes the fix removes the bias entirely"}
+    per_unit = abs(per_unit_effect) * share * slots
+    return {"affected_share": share, "slots": slots,
+            "ceiling_per_season": per_unit * units_per_season,
+            "note": "upper bound: assumes the fix captures the effect ENTIRELY"}
 
 
 # --------------------------------------------------------------------------

@@ -4779,6 +4779,68 @@ forgotten; the rest still can.
 
 ---
 
+## S62 / O60 — the VICE-CAPTAIN rule is already right, 2026-10-26
+
+`fpl2/run_vice.py`. Prompted by GW8 of 2026-27: the captain B.Fernandes played
+ZERO minutes with `status=a`, no news, and a forecast of xp 5.79 /
+p_appear 0.95. The armband passed to the vice, Palmer, who scored -1 -- the
+insurance COST a point. `plan_gw` picks the vice as second-highest xp, which
+appeared to ignore the only job a vice has.
+
+### Priced BEFORE building — the first time on this project
+
+`verify.price_ceiling`, written the same day:
+
+    captain plays 0 minutes in   4.16%  of (squad, gameweek) decisions
+    perfect-hindsight headroom   12.84  points per blank
+    -> ceiling                    20.3  pts/season  against an MDE of ~14
+
+**The prediction was pre-registered as NULL**, because even a rule capturing
+the entire headroom is barely resolvable.
+
+### The result
+
+| rule | mean | t | p | 95% CI | MDE | seasons |
+|---|---|---|---|---|---|---|
+| vice_avail (xp x p_appear) | **-0.1** | -0.21 | 0.843 | [-1.1, +0.9] | **1.2** | 2/8 |
+| vice_sixty (xp x p_sixty) | -0.1 | -0.11 | 0.916 | [-1.1, +1.0] | 1.3 | 3/8 |
+| vice_mins (expected minutes) | **-2.5** | -2.45 | **0.044** | [-4.9, -0.1] | 2.8 | 1/8 |
+| **vice_perfect (hindsight)** | **+10.1** | **7.83** | **0.000** | [+7.1, +13.2] | 3.6 | **8/8** |
+
+**The proposed fix is -0.1 against an MDE of 1.2 -- the tightest null this
+project has produced.** Picking by expected minutes is actively WORSE: it buys
+availability by discarding quality.
+
+### The ceiling arm is what makes the null interpretable
+
+`vice_perfect` is **+10.1, 8/8 seasons**. The headroom is real; it is simply
+unreachable by any availability-based rule. **If a captain's blank were
+predictable from `p_appear` the model would have flagged B.Fernandes** -- it
+had him at 0.95 with no news. The vice's value comes from guessing WHICH
+player hauls in a specific week, which is exactly as unpredictable as the
+captain pick itself (S53: all seven captain alternatives lost). Weighting
+availability cannot help when availability was not the missing information.
+
+**`argmax(xp)` in second place is already correct. NOT SHIPPED; nothing
+changes.** Palmer at -1 was variance, not a defect, and calling it one on the
+Sunday was wrong.
+
+**R51: include a hindsight arm when gating a decision rule.** Without
+`vice_perfect` this reads "availability weighting does nothing" and stops
+there. With it, the finding is sharper and more useful: there are 10 points a
+season here and no rule using information available at the deadline can
+reach them. A null with a measured ceiling closes a question; a null without
+one invites the same idea back next month.
+
+### The harness caught its own bug on first real use
+
+`price_ceiling` hardcoded a factor of 11 for an XI and priced this ONE-SLOT
+decision at 223 pts/season instead of 20. Fixed with an explicit `slots`
+argument and a test asserting the two cases differ by exactly 11x. The
+harness is code, and code is wrong until tested -- 14 tests now.
+
+---
+
 # Appendix — script index
 
 | Script | Answers |

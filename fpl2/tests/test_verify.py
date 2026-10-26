@@ -84,8 +84,20 @@ def test_dose_response_accepts_an_interior_optimum():
 def test_price_ceiling_would_have_predicted_the_tenure_result():
     """-0.85 pts/gameweek on 6.4% of top-10 rows. The gate measured +1.0."""
     r = V.price_ceiling(per_unit_effect=-0.85, affected_rows=195,
-                        total_rows=3030)
+                        total_rows=3030, slots=11)
     assert r["ceiling_per_season"] < 30
+
+
+def test_price_ceiling_respects_the_number_of_slots():
+    """A vice-captain rule touches ONE place, not an XI. The first version of
+    this function hardcoded 11 and priced it at 223 pts/season instead of 20."""
+    one = V.price_ceiling(per_unit_effect=12.84, affected_rows=126,
+                          total_rows=3030, slots=1)
+    eleven = V.price_ceiling(per_unit_effect=12.84, affected_rows=126,
+                             total_rows=3030, slots=11)
+    assert 15 < one["ceiling_per_season"] < 25
+    assert eleven["ceiling_per_season"] == pytest.approx(
+        one["ceiling_per_season"] * 11)
 
 
 # --- strictly_lagged -------------------------------------------------------
