@@ -41,14 +41,32 @@ def _get(url):
         urllib.request.Request(url, headers=_HEADERS), timeout=60))
 
 
-def build(season: str = "2026-27", through_gameweek: int | None = None) -> pd.DataFrame:
+def build(season: str = "2026-27", through_gameweek: int | None = None,
+          include_provisional: bool = True) -> pd.DataFrame:
     """One row per player-fixture, matching the historical schema."""
     boot = _get(f"{API}/bootstrap-static/")
     el = {e["id"]: e for e in boot["elements"]}
     teams = {t["id"]: t["short_name"] for t in boot["teams"]}
     names = {t["id"]: t["name"] for t in boot["teams"]}
 
-    finished = [e["id"] for e in boot["events"] if e.get("finished")]
+    # A gameweek whose fixtures are all `finished_provisional` has complete
+    # minutes and goals; only the final data check is outstanding, which moves
+    # bonus by at most a point or two. Filtering on `finished` alone means a
+    # Monday forecast silently ignores the weekend just played -- GW8 of
+    # 2026-27 sat at finished=False for days with all ten fixtures done.
+    done = {e["id"] for e in boot["events"] if e.get("finished")}
+    prov = set()
+    if include_provisional:
+        for e in boot["events"]:
+            if e["id"] in done or not e.get("is_current"):
+                continue
+            fx = _get(f"{API}/fixtures/?event={e['id']}")
+            if fx and all(f.get("finished_provisional") for f in fx):
+                prov.add(e["id"])
+    finished = sorted(done | prov)
+    if prov:
+        print(f"  including GW{sorted(prov)} as PROVISIONAL "
+              f"(all fixtures played, bonus not yet final)", flush=True)
     if through_gameweek is not None:
         finished = [g for g in finished if g <= through_gameweek]
     if not finished:

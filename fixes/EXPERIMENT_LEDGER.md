@@ -4841,6 +4841,41 @@ harness is code, and code is wrong until tested -- 14 tests now.
 
 ---
 
+## M30 — FOUR tools asked about the gameweek that had already happened
+
+A single defect, found four times in three days, in four separate files:
+
+| file | what it read | found by |
+|---|---|---|
+| `plan_gw.py` | `out[gameweek == max]` -- the last FINISHED week | the user, asking why the optimiser wanted a defender facing Chelsea |
+| `build_wildcard_now.py` | same | me, after the above |
+| `run_live_project.py` | projected only weeks already in the panel | me, "projected 1 frames" |
+| `run_live_chip.py` | asked the chip policy about `last`, not `next` | me, 2026-10-26 |
+
+The last is the most consequential. `chips.rolling_policy` is CALENDAR driven
+-- its secretary rule observes the first 37% of each window -- so asking it
+about GW8 while standing at the GW9 deadline does not merely use stale prices,
+it asks a question whose answer is already fixed. **It returned PLAY NOTHING
+for days. Asked about GW9 it returns WILDCARD.**
+
+The pattern in all four: a live pipeline naturally holds data for weeks that
+have HAPPENED, so `max(gameweek)` is the obvious handle and is always wrong.
+The backtest path never shows it, because in a backtest the holdout season's
+future weeks are already in the frame (R44).
+
+**R52: name the gameweek you are deciding, never derive it from the data.**
+Every one of these came from `max(gameweek)` or an equivalent. The deadline
+being decided is a fact about the calendar, available from
+`bootstrap-static`'s `is_next`, and it should be passed explicitly. Three of
+the four tools now take `target`/`decide_gw` from the API and print it in
+their header, so a wrong week is visible in the first line of output.
+
+**Scope.** Every live recommendation made before 2026-10-23 priced the
+previous week's fixtures. The holdout results are unaffected -- they use
+`model.walk_forward`, which is given its holdout explicitly.
+
+---
+
 # Appendix — script index
 
 | Script | Answers |

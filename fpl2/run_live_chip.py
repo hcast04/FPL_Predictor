@@ -25,7 +25,7 @@ THREE DEFECTS IN THE EXISTING LIVE PATH, fixed here:
      pulled for 2026-27 and attached.
 """
 from __future__ import annotations
-import json, os, sys, time, urllib.request
+import json, sys, time, urllib.request
 from pathlib import Path
 import numpy as np, pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -59,9 +59,7 @@ class _WP:
 
 def _entry():
     if not ENTRY:
-        raise SystemExit(
-            "set your FPL team id first:  export FPL_ENTRY=1234567\n"
-            "(it is the number in fantasy.premierleague.com/entry/<id>/)")
+        raise SystemExit("set FPL_ENTRY=<your team id>")
     return ENTRY
 
 
@@ -72,7 +70,10 @@ def main():
     rates._reg = lambda s=0: _WP(PoissonRegressor(alpha=1.0, max_iter=500))
 
     boot = api("bootstrap-static/")
-    finished = sorted(e["id"] for e in boot["events"] if e.get("finished"))
+    finished = sorted(e["id"] for e in boot["events"]
+                      if e.get("finished") or (e.get("is_current") and all(
+                          x.get("finished_provisional")
+                          for x in api(f"fixtures/?event={e['id']}"))))
     nxt = next((e for e in boot["events"] if e.get("is_next")), None)
     gw = int(nxt["id"]) if nxt else max(finished) + 1
     print(f"finished GW {finished} | next GW{gw} deadline {nxt['deadline_time']}",
@@ -175,16 +176,27 @@ def main():
     grid["xp"] = grid["xp"].fillna(0.0)
     grid.loc[grid["fixtures"] <= 0, "xp"] = 0.0
 
+    # THE GAMEWEEK BEING DECIDED. This asked the policy about `last` -- the
+    # last FINISHED gameweek -- so at the GW9 deadline it was deciding GW8,
+    # which has already been played. Same defect class as plan_gw and
+    # build_wildcard_now had: using the week that happened instead of the one
+    # in front of you. The secretary rule is calendar-driven, so this also
+    # decided whether the chip could fire AT ALL (it observes through GW8).
     name = {e["code"]: e["web_name"] for e in boot["elements"]}
-    week = grid[grid["gameweek"].eq(last)]
+    decide_gw = int(nxt["id"]) if nxt else last + 1
+    week = grid[grid["gameweek"].eq(decide_gw)]
+    if week.empty:
+        print(f"  !! no rows for GW{decide_gw}; falling back to GW{last}",
+              flush=True)
+        decide_gw, week = last, grid[grid["gameweek"].eq(last)]
     held = week[week[C.PLAYER_KEY].isin(squad)]
     avail = [c for c in ("wildcard", "freehit", "bboost", "3xc")
              if c not in played]
     policy = chips.rolling_policy(grid, "xp")
-    decision = policy(last, squad, week, avail)
+    decision = policy(decide_gw, squad, week, avail)
 
     print("\n" + "=" * 70)
-    print(f"CHIP POLICY (S50: +119.8 pts/season, 7/8 seasons) -- GW{last} state")
+    print(f"CHIP POLICY (S50: +119.8 pts/season, 7/8 seasons) -- deciding GW{decide_gw}")
     print("=" * 70)
     print(f"  chips available : {avail}")
     print(f"  policy says     : {decision if decision else 'PLAY NOTHING'}")

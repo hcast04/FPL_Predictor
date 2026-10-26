@@ -16,7 +16,7 @@ PUBLISHED fixture list, and opponent STRENGTH is rewound to week t by
 `_strength_as_of` -- which is the one place the leak would hide (M17).
 """
 from __future__ import annotations
-import json, os, sys, time, urllib.request
+import json, sys, time, urllib.request
 from pathlib import Path
 import numpy as np, pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -50,9 +50,7 @@ class _WP:
 
 def _entry():
     if not ENTRY:
-        raise SystemExit(
-            "set your FPL team id first:  export FPL_ENTRY=1234567\n"
-            "(it is the number in fantasy.premierleague.com/entry/<id>/)")
+        raise SystemExit("set FPL_ENTRY=<your team id>")
     return ENTRY
 
 
@@ -63,7 +61,10 @@ def main():
     rates._reg = lambda s=0: _WP(PoissonRegressor(alpha=1.0, max_iter=500))
 
     boot = api("bootstrap-static/")
-    finished = sorted(e["id"] for e in boot["events"] if e.get("finished"))
+    finished = sorted(e["id"] for e in boot["events"]
+                      if e.get("finished") or (e.get("is_current") and all(
+                          x.get("finished_provisional")
+                          for x in api(f"fixtures/?event={e['id']}"))))
     gw = max(finished)
     cur = pd.read_pickle(LIVE) if LIVE.exists() else None
     if cur is None or sorted(int(g) for g in cur["gameweek"].unique()) != finished:
