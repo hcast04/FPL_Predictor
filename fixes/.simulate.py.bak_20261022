@@ -1,0 +1,216 @@
+"""
+Season simulation under the real FPL constraints.
+
+Every decision is made on `signal`; every point is scored on `actual`. The two
+are never the same column, because that is how a forecast ends up being
+evaluated against itself.
+
+Deliberately simple policy (one free transfer, no hits), because the point of
+this module is to be a measuring instrument, not a strategy. A better policy is
+a separate experiment that must beat this one.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+import numpy as np
+import pandas as pd
+
+from . import config as C
+from . import optimise
+
+
+# FPL 2026-27 gives EIGHT chips, two of each, split across the halves
+# (confirmed from bootstrap-static): wildcard and freehit GW2-19 and GW20-38,
+# bench boost and triple captain GW1-19 and GW20-38.
+#
+# The simulator ignored all of them, which S22 measures as part of a ~287
+# pts/season gap between this instrument and a real manager. S4 prices chip
+# DEFERRAL alone at ~-92/season and found timing barely matters (+/-5 vs
+# random), so most of the value should be reachable with a crude policy.
+#
+#   3xc       captain counts x3 instead of x2
+#   bboost    all 15 score, not just the XI
+#   wildcard  unlimited transfers, squad KEPT afterwards
+#   freehit   unlimited transfers, squad REVERTS afterwards
+CHIP_WINDOWS = {"wildcard": ((2, 19), (20, 38)), "freehit": ((2, 19), (20, 38)),
+                "bboost": ((1, 19), (20, 38)), "3xc": ((1, 19), (20, 38))}
+
+
+@dataclass
+class SeasonResult:
+    total: float
+    gameweeks: int
+    per_gameweek: list = field(default_factory=list)
+    transfers: int = 0
+    chips_played: dict = field(default_factory=dict)   # gameweek -> chip name
+    # one (gameweek, out, in, claimed_gain) per committed swap. Empty unless
+    # something reads it; the count above is unchanged for existing callers.
+    transfer_log: list = field(default_factory=list)
+    # per gameweek: (gw, [xi player codes], captain code, realised value).
+    # Needed to diagnose a bad week -- a season total cannot tell you whether
+    # the XI blanked or the captain did.
+    squad_log: list = field(default_factory=list)
+
+    @property
+    def mean(self) -> float:
+        return self.total / self.gameweeks if self.gameweeks else float("nan")
+
+
+def _opening_squad(panel, signal, horizon, budget):
+    gws = sorted(panel["gameweek"].unique())[:horizon]
+    window = panel[panel["gameweek"].isin(gws)]
+    strength = (window.groupby(C.PLAYER_KEY)
+                .agg(**{signal: (signal, "mean"), "cost": ("cost", "first"),
+                        "position": ("position", "first"), "team": ("team", "first")})
+                .reset_index())
+    return optimise.optimise_squad(strength, signal, budget=budget)
+
+
+def simulate_season(panel: pd.DataFrame, signal: str, actual: str = "points",
+                    budget: float = C.BUDGET, opening_horizon: int = 5,
+                    min_gain: float = 0.30,
+                    opening_squad: list | None = None,
+                    captain_score: str | None = None,
+                    chips: dict | None = None,
+                    chip_policy=None) -> SeasonResult | None:
+    """
+    One season, one free transfer a week, no hits.
+
+    `panel` must be a single season WITH blanks materialised, so a player with
+    no fixture scores zero rather than vanishing from the week.
+    """
+    if opening_squad is None:
+        sq = _opening_squad(panel, signal, opening_horizon, budget)
+        if sq is None or len(sq) != C.SQUAD_SIZE:
+            return None
+        squad = sq[C.PLAYER_KEY].tolist()
+    else:
+        squad = list(opening_squad)
+
+    cost = panel.groupby(C.PLAYER_KEY)["cost"].first()
+    club = panel.groupby(C.PLAYER_KEY)["team"].first()
+    bank = budget - float(cost.reindex(squad).sum())
+    res = SeasonResult(total=0.0, gameweeks=0)
+
+    chips = dict(chips or {})
+    # `chip_policy(gw, squad, week, remaining)` -> chip name or None, decided
+    # with ONLY what is knowable at that deadline: this week's signal, the
+    # squad, and the fixture list. It must never read a future gameweek's
+    # forecast -- those were produced with data from their own week (R4).
+    remaining = {c: [list(w) for w in ws] for c, ws in CHIP_WINDOWS.items()}
+    revert_to = None                     # set the week a free hit is played
+
+    for gw in sorted(panel["gameweek"].unique()):
+        if revert_to is not None:        # the free-hit squad lasted one week
+            squad, bank = revert_to
+            revert_to = None
+        week = panel[panel["gameweek"].eq(gw)]
+        if chip_policy is not None:
+            avail = [c for c, ws in remaining.items()
+                     if any(lo <= gw <= hi for lo, hi in ws)]
+            chip = chip_policy(int(gw), list(squad), week, avail) if avail else None
+            if chip is not None:
+                for w in remaining.get(chip, []):
+                    if w and w[0] <= gw <= w[1]:
+                        remaining[chip].remove(w)
+                        break
+        else:
+            chip = chips.get(int(gw))
+
+        if chip in ("wildcard", "freehit"):
+            # unlimited transfers: rebuild from scratch on the whole budget
+            if chip == "freehit":
+                revert_to = (list(squad), bank)
+            # A WILDCARD sets up the next stretch of the season, so it is
+            # optimised over a forward horizon -- the same construction as the
+            # opening squad. A FREE HIT lasts one week and reverts, so for it
+            # the current gameweek alone is correct.
+            #
+            # The first version optimised the wildcard on a SINGLE gameweek and
+            # cost 203 points in 2024-25: it tore up a good squad for one week's
+            # fixtures and the damage persisted all season.
+            if chip == "wildcard":
+                horizon_gws = [g for g in sorted(panel["gameweek"].unique())
+                               if gw <= g < gw + opening_horizon]
+                pool = panel[panel["gameweek"].isin(horizon_gws)]
+                pool = pool[pool["fixtures"] > 0]
+            else:
+                pool = week[week["fixtures"] > 0]
+            if len(pool) >= C.SQUAD_SIZE:
+                spend = bank + float(cost.reindex(squad).sum())
+                rebuilt = optimise.optimise_squad(
+                    pool.groupby(C.PLAYER_KEY, as_index=False)
+                        .agg(**{signal: (signal, "mean"), "cost": ("cost", "first"),
+                                "position": ("position", "first"),
+                                "team": ("team", "first")}),
+                    signal, budget=spend)
+                if rebuilt is not None and len(rebuilt) == C.SQUAD_SIZE:
+                    squad = rebuilt[C.PLAYER_KEY].tolist()
+                    bank = spend - float(cost.reindex(squad).sum())
+                    res.chips_played[int(gw)] = chip
+
+        held = week[week[C.PLAYER_KEY].isin(squad)]
+        if chip == "bboost":
+            # every player scores, so the "XI" is the whole squad
+            col = actual or signal
+            if len(held):
+                xi = optimise.best_xi(held, signal)
+                capc = (optimise.pick_captain(xi, captain_score or signal)[col]
+                        if xi is not None else 0.0)
+                value = float(held[col].sum()) + float(capc)
+                res.chips_played[int(gw)] = chip
+            else:
+                value = float("nan")
+        elif chip == "3xc":
+            base = optimise.xi_value(held, signal, actual=actual,
+                                     captain_score=captain_score)
+            xi = optimise.best_xi(held, signal)
+            if xi is not None and np.isfinite(base):
+                col = actual or signal
+                cap = optimise.pick_captain(xi, captain_score or signal)
+                value = base + float(cap[col])      # x2 -> x3
+                res.chips_played[int(gw)] = chip
+            else:
+                value = base
+        else:
+            value = optimise.xi_value(held, signal, actual=actual,
+                                      captain_score=captain_score)
+        if np.isfinite(value):
+            res.total += value
+            res.gameweeks += 1
+            res.per_gameweek.append(value)
+            xi = optimise.best_xi(held, signal)
+            if xi is not None:
+                cap = optimise.pick_captain(xi, captain_score or signal)
+                res.squad_log.append((int(gw), list(xi[C.PLAYER_KEY]),
+                                      cap[C.PLAYER_KEY], float(value)))
+
+        nxt = panel[panel["gameweek"].eq(gw + 1)]
+        if nxt.empty or chip in ("wildcard", "freehit"):
+            continue              # the chip already used this week's transfer
+        owned = nxt[nxt[C.PLAYER_KEY].isin(squad)]
+        best_gain, swap = min_gain, None
+        counts = club.reindex(squad).value_counts()
+        for _, out in owned.iterrows():
+            budget_for = bank + float(cost.get(out[C.PLAYER_KEY], 4.0))
+            cand = nxt[nxt["position"].eq(out["position"])
+                       & ~nxt[C.PLAYER_KEY].isin(squad)
+                       & nxt["cost"].le(budget_for)]
+            if cand.empty:
+                continue
+            top = cand.loc[cand[signal].idxmax()]
+            if top["team"] != out["team"] and counts.get(top["team"], 0) >= C.MAX_PER_CLUB:
+                continue
+            gain = float(top[signal]) - float(out[signal])
+            if gain > best_gain:
+                best_gain = gain
+                swap = (out[C.PLAYER_KEY], top[C.PLAYER_KEY],
+                        float(cost.get(out[C.PLAYER_KEY], 4.0)), float(top["cost"]))
+        if swap:
+            a, b, ca, cb = swap
+            squad = [b if x == a else x for x in squad]
+            bank += ca - cb
+            res.transfers += 1
+            res.transfer_log.append((int(gw) + 1, a, b, float(best_gain)))
+    return res

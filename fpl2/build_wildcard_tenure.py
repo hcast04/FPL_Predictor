@@ -24,7 +24,7 @@ from fpl2 import (config as C, data, features, live, model,          # noqa: E40
                   optimise, project, rates, team, understat)
 
 API = "https://fantasy.premierleague.com/api"; HDR = {"User-Agent": "Mozilla/5.0"}
-SEASON = "2026-27"; LIVE = Path.home() / "fpl2_live2627.pkl"
+SEASON = "2026-27"; LIVE = C.cache("fpl2_live2627.pkl")
 BUDGET = float(os.environ.get("WC_BUDGET", "99.1"))
 K_TEN = int(os.environ.get("TENURE_K", "10"))
 MIN_CHANCE = 75

@@ -25,7 +25,7 @@ THREE DEFECTS IN THE EXISTING LIVE PATH, fixed here:
      pulled for 2026-27 and attached.
 """
 from __future__ import annotations
-import json, sys, time, urllib.request
+import json, os, sys, time, urllib.request
 from pathlib import Path
 import numpy as np, pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -35,8 +35,8 @@ from fpl2 import (config as C, chips, data, features, live, model,  # noqa: E402
 API = "https://fantasy.premierleague.com/api"
 HDR = {"User-Agent": "Mozilla/5.0"}
 SEASON = "2026-27"
-LIVE = Path.home() / "fpl2_live2627.pkl"
-PANEL = Path.home() / "fpl2_panel_us.pkl"
+LIVE = C.cache("fpl2_live2627.pkl")
+PANEL = C.cache("fpl2_panel_us.pkl")
 ENTRY = int(os.environ.get("FPL_ENTRY") or 0)   # export FPL_ENTRY=<your team id>
 
 
@@ -55,12 +55,6 @@ class _WP:
     def fit(self, X, y, sample_weight=None):
         self.est.fit(self.pre.fit_transform(X), y, sample_weight=sample_weight); return self
     def predict(self, X): return self.est.predict(self.pre.transform(X))
-
-
-def _entry():
-    if not ENTRY:
-        raise SystemExit("set FPL_ENTRY=<your team id>")
-    return ENTRY
 
 
 def main():
@@ -123,15 +117,15 @@ def main():
     feats, names = features.build(panel, tf)
     out = model.walk_forward(feats, tf, names, SEASON)
     print(f"[{time.time()-t0:4.0f}s] forecast done, {len(names)} features", flush=True)
-    out.to_pickle(Path.home() / "fpl2_live_chip_out.pkl")
+    out.to_pickle(C.cache("fpl2_live_chip_out.pkl"))
 
     # --- the real squad ------------------------------------------------------
     el = {e["id"]: e for e in boot["elements"]}
-    picks = api(f"entry/{_entry()}/event/{max(finished)}/picks/")
+    picks = api(f"entry/{ENTRY}/event/{max(finished)}/picks/")
     ids = [p["element"] for p in picks["picks"]]
     squad = [el[i]["code"] for i in ids if i in el]
     used = {c["name"] for c in (picks.get("active_chip") and [{"name": picks["active_chip"]}] or [])}
-    hist_api = api(f"entry/{_entry()}/history/")
+    hist_api = api(f"entry/{ENTRY}/history/")
     played = {c["name"] for c in hist_api.get("chips", [])}
     print(f"\nsquad: {len(squad)} players | chips already played: "
           f"{sorted(played) if played else 'NONE'}", flush=True)
@@ -146,7 +140,7 @@ def main():
     # unplayed weeks are present too.
     last = int(out["gameweek"].max())
     fc = out[["season", "gameweek", C.PLAYER_KEY, "xp"]]
-    pjp = Path.home() / "fpl2_live_proj.pkl"
+    pjp = C.cache("fpl2_live_proj.pkl")
     if pjp.exists():
         pj = pd.read_pickle(pjp)
         pj = pj[pj["gameweek"] > last][["season", "gameweek", C.PLAYER_KEY, "xp"]]

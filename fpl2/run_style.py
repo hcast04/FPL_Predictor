@@ -67,7 +67,7 @@ def run(holdout: str):
     feats = pd.read_pickle(SCRATCH / "feats_us.pkl")
     names = pickle.load(open(SCRATCH / "names_us.pkl", "rb"))
     tf = pd.read_pickle(SCRATCH / "tf.pkl")
-    panel = pd.read_pickle(Path.home() / "fpl2_panel_us.pkl")
+    panel = pd.read_pickle(C.cache("fpl2_panel_us.pkl"))
 
     sty, made = style.build(panel)
     key = ["season", "gameweek", C.PLAYER_KEY]

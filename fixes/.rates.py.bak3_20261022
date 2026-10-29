@@ -1,0 +1,306 @@
+"""
+Per-90 scoring rates, conditional on being on the pitch.
+
+Four choices that matter, each one measured rather than assumed:
+
+  * **Targets are the UNDERLYING quantities.** xG and xA, not goals and
+    assists. The expected versions are smoother (sd/mean 2.09 vs 3.11 for
+    goals, 1.80 vs 3.18 for assists) AND better predictors of future returns
+    (corr 0.263 vs 0.241, 0.163 vs 0.122). Predicting the spiky event directly
+    stretched the upper tail, and the captain pick -- argmax(xP) -- samples
+    that tail every week.
+
+  * **Poisson loss, minutes as sample weight.** Counts with exposure. A rate
+    from 5 minutes carries a twentieth of the information of one from 90.
+
+  * **Conversion factors shrunk toward the pooled ratio.** Measured per
+    position, goalkeepers read assists/xA = 4.533 and forwards 2.423, because
+    those positions barely accumulate xA. Multiplying a smooth prediction by
+    2.4 re-injects the dispersion the smooth target removed.
+
+  * **Predictions clipped at the sustained ceiling.** Changing the target does
+    not bound the output: Poisson boosting extrapolates past anything it
+    trained on. The ceiling is the 99th percentile of per-player-SEASON rates,
+    because a single-match per-90 rate is not a rate (the 99th percentile of
+    single-match goals/90 is 2.000 -- one player scoring twice).
+
+The defensive return is a classifier, not a rate: FPL pays 2 points for
+crossing a threshold, so the quantity that composes correctly is a
+probability. Bonus is a per-90 rate rather than a simulated BPS ranking --
+the previous project tested the rank-based version and it ranked WORSE
+(ledger F2).
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
+
+from . import config as C
+from . import data as _data
+from . import scoring
+
+RATE_TARGETS = {
+    "xg_per90": "expected_goals",
+    "xa_per90": "expected_assists",
+    "saves_per90": "saves",
+    "bonus_per90": "bonus",
+    "yellow_per90": "yellow_cards",
+}
+
+# xG -> goals and xA -> assists. Not 1.0 for assists: FPL credits assists for
+# deflections, rebounds and won penalties that Opta's xA does not model.
+CONVERT = {"xg_per90": ("goals_per90", "goals_scored", "expected_goals"),
+           "xa_per90": ("assists_per90", "assists", "expected_assists")}
+
+# every quantity needing a ceiling, and the column it is measured from
+CEILING_SOURCES = dict(RATE_TARGETS,
+                       **{dst: ev for _, (dst, ev, _) in CONVERT.items()})
+
+# O48 switches, so the two halves of M20 can be measured separately. Both
+# default TRUE, which is the shipped (corrected) behaviour. Setting either to
+# False deliberately re-introduces a known-false input and is for measurement
+# only -- see the O48 gate.
+MASK_TARGETS = True        # False: fill absent xG/xA with 0.0 in the training targets
+MASK_CONVERSION = True     # False: let absent xG/xA count as 0 in the conversion denominator
+
+MIN_MINUTES_FOR_FIT = 20.0      # below this a per-90 rate is mostly noise
+WINSOR_QUANTILE = 0.99
+WINSOR_MIN_MINUTES = 60.0
+# A player-season must contain this many minutes before its rate counts toward
+# a ceiling. Without it, a midfielder with 90 total minutes and one assist
+# registers as a "sustained" 1.0 assists/90 and inflates the 99th percentile
+# to 1.121 -- a cap that never fires. At 900 minutes (ten full matches) the
+# same ceiling is 0.634 and binds. See ledger R20.
+CEILING_MIN_SEASON_MINUTES = 900.0
+CONVERT_SHRINK = 50.0           # expected-goal units of evidence
+
+
+def build_targets(panel: pd.DataFrame) -> pd.DataFrame:
+    d = panel.copy()
+    mins = pd.to_numeric(d["minutes"], errors="coerce").fillna(0.0)
+    d["_exposure"] = mins / 90.0
+    for name, col in RATE_TARGETS.items():
+        v = pd.to_numeric(d.get(col, 0.0), errors="coerce")
+        # saves, bonus and cards are always recorded, so a missing value there
+        # really is zero. xG and xA are NOT: `data.apply_coverage_mask` marks
+        # 2022-23 GW1-32 absent because they were never collected. Filling
+        # those with 0.0 undoes the mask and teaches the model that players who
+        # generated xG generated none -- about 21% of all training rows (O43).
+        # A NaN target is dropped by RateModel.fit via np.isfinite.
+        if col not in _data.EXPECTED_COLS or not MASK_TARGETS:
+            v = v.fillna(0.0)
+        d[name] = np.where(mins > 0, v / d["_exposure"].replace(0, np.nan), np.nan)
+    dc = pd.to_numeric(d.get("defensive_contribution", 0.0), errors="coerce").fillna(0.0)
+    thresh = d["position"].map(
+        {k: (v if v is not None else np.inf)
+         for k, v in scoring.DEFENSIVE_THRESHOLD.items()}).astype(float)
+    d["y_defensive_return"] = (dc >= thresh).astype(int)
+    return d
+
+
+def conversion_factors(train: pd.DataFrame) -> dict:
+    """Per-position event/expected ratios, shrunk toward the pooled ratio."""
+    d = train[(train["fixtures"] > 0) & (train["minutes"] >= WINSOR_MIN_MINUTES)]
+    # Only rows where the expected stat EXISTS may contribute. Summing a
+    # masked row's real goals against a zeroed xG inflates every factor --
+    # measured at MID xA->assists 1.459 against an honest 1.339 (O43).
+    def _ratio(frame, event_col, exp_col):
+        ok = frame[frame[exp_col].notna()] if MASK_CONVERSION else frame
+        ev = pd.to_numeric(ok[event_col], errors="coerce").fillna(0).sum()
+        ex = pd.to_numeric(ok[exp_col], errors="coerce").sum()
+        return float(ev), float(ex)
+
+    pooled = {}
+    for src, (_, event_col, exp_col) in CONVERT.items():
+        ev, ex = _ratio(d, event_col, exp_col)
+        pooled[src] = float(ev / ex) if ex > 1e-6 else 1.0
+    out = {}
+    for pos in C.POSITIONS:
+        sub = d[d["position"].eq(pos)]
+        f = {}
+        for src, (_, event_col, exp_col) in CONVERT.items():
+            ev, ex = _ratio(sub, event_col, exp_col)
+            f[src] = float(np.clip((ev + CONVERT_SHRINK * pooled[src])
+                                   / (ex + CONVERT_SHRINK), 0.5, 2.0))
+        out[pos] = f
+    return out
+
+
+def rate_caps(train: pd.DataFrame) -> dict:
+    """Per-position ceilings, from rates sustained across a whole season."""
+    d = train[(train["fixtures"] > 0) & (train["minutes"] >= WINSOR_MIN_MINUTES)]
+    caps = {}
+    for pos in C.POSITIONS:
+        sub = d[d["position"].eq(pos)]
+        if len(sub) < 100:
+            continue
+        def _rate(x, col):
+            """Rate over the rows where this quantity was actually recorded."""
+            v = pd.to_numeric(x[col], errors="coerce")
+            if col in _data.EXPECTED_COLS:
+                keep = v.notna()
+                mins = float(x.loc[keep, "minutes"].sum())
+                return 90.0 * float(v[keep].sum()) / max(mins, 1.0)
+            return 90.0 * float(v.fillna(0).sum()) / max(float(x["minutes"].sum()), 1.0)
+
+        agg = sub.groupby([C.PLAYER_KEY, "season"]).apply(
+            lambda x: pd.Series(dict(
+                {name: _rate(x, col) for name, col in CEILING_SOURCES.items()},
+                _season_minutes=float(x["minutes"].sum()))),
+            include_groups=False)
+        agg = agg[agg["_season_minutes"] >= CEILING_MIN_SEASON_MINUTES]
+        if len(agg) < 20:
+            continue
+        caps[pos] = {name: float(agg[name].quantile(WINSOR_QUANTILE))
+                     for name in CEILING_SOURCES if name in agg}
+    return caps
+
+
+def _reg(seed=0):
+    return HistGradientBoostingRegressor(
+        loss="poisson", max_iter=300, learning_rate=0.06, max_depth=6,
+        min_samples_leaf=40, l2_regularization=1.0, random_state=seed)
+
+
+def _clf(seed=0):
+    return HistGradientBoostingClassifier(
+        max_iter=300, learning_rate=0.06, max_depth=6, min_samples_leaf=40,
+        l2_regularization=1.0, random_state=seed)
+
+
+@dataclass
+class RateModel:
+    feats: list
+    per_position: bool = True
+    models: dict = field(default_factory=dict)
+    defensive: dict = field(default_factory=dict)
+    caps: dict = field(default_factory=dict)
+    convert: dict = field(default_factory=dict)
+
+    PREFIX = "pred_"
+
+    def _groups(self, d: pd.DataFrame):
+        """
+        Fit per position for the rates, pooled for everything else.
+
+        Not the rejected 'per-position models' idea (ledger F7), which split
+        one feature matrix four ways for the SAME target. Here the targets
+        differ in kind: saves exist only for goalkeepers, and a defender's
+        goal rate has little in common with a forward's.
+        """
+        if not self.per_position:
+            yield "ALL", d
+            return
+        for pos in C.POSITIONS:
+            sub = d[d["position"].eq(pos)]
+            if len(sub) > 300:
+                yield pos, sub
+
+    def fit(self, train: pd.DataFrame) -> "RateModel":
+        d = build_targets(train)
+        from . import features as _f
+        self.feats = _f.usable(d[d["fixtures"] > 0], self.feats)
+        self.caps = rate_caps(train)
+        self.convert = conversion_factors(train)
+        played = d[(d["fixtures"] > 0) & (d["minutes"] >= MIN_MINUTES_FOR_FIT)]
+        for key, sub in self._groups(played):
+            X = sub[self.feats].to_numpy("float32")
+            w = sub["_exposure"].to_numpy(float)
+            self.models[key] = {}
+            for i, name in enumerate(RATE_TARGETS):
+                if name == "saves_per90" and key not in ("GK", "ALL"):
+                    continue                      # outfielders do not make saves
+                y = sub[name].to_numpy(float)
+                ok = np.isfinite(y)
+                if ok.sum() < 200:
+                    continue
+                yy = np.clip(y[ok], 0, None)
+                if yy.sum() <= 0:
+                    # the event never happens for this group (a goalkeeper
+                    # scoring). Poisson is undefined; no model means predict 0.
+                    continue
+                self.models[key][name] = _reg(i).fit(X[ok], yy, sample_weight=w[ok])
+        return self
+
+    def fit_defensive_within_season(self, history: pd.DataFrame) -> "RateModel":
+        """
+        Fit the defensive-return model on earlier gameweeks of the SAME season.
+
+        Necessary because tackles, recoveries and clearances/blocks/
+        interceptions are absent from every season before 2025-26 (ledger
+        R15), and legitimate because the caller supplies only strictly earlier
+        gameweeks.
+        """
+        d = build_targets(history)
+        dd = d[(d["fixtures"] > 0) & (d["minutes"] > 0)]
+        dd = dd[dd["y_defensive_return"].notna()]
+        if dd.empty or dd["y_defensive_return"].sum() == 0:
+            return self
+        self.defensive = {}
+        for key, sub in self._groups(dd):
+            if sub["y_defensive_return"].nunique() < 2 or len(sub) < 200:
+                continue
+            self.defensive[key] = _clf(9).fit(
+                sub[self.feats].to_numpy("float32"),
+                sub["y_defensive_return"].to_numpy())
+        return self
+
+    def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
+        """
+        Predictions are PREFIXED `pred_`.
+
+        build_targets() creates columns named after the same quantities from
+        realised data. Sharing those names let an evaluation silently compare
+        actuals against actuals and report perfect calibration (ledger R14).
+        """
+        out = pd.DataFrame(index=frame.index)
+        for name in RATE_TARGETS:
+            out[self.PREFIX + name] = 0.0
+        for _, (dst, _, _) in CONVERT.items():
+            out[self.PREFIX + dst] = 0.0
+        out[self.PREFIX + "defensive_return_prob"] = 0.0
+
+        groups = ([(p, frame[frame["position"].eq(p)]) for p in C.POSITIONS]
+                  if self.per_position else [("ALL", frame)])
+        for key, sub in groups:
+            if sub.empty:
+                continue
+            bank = self.models.get(key) or self.models.get("ALL") or {}
+            cap = self.caps.get(key) or {}
+            conv = self.convert.get(key) or {}
+            X = sub[self.feats].to_numpy("float32")
+            for name in RATE_TARGETS:
+                m = bank.get(name)
+                if m is None:
+                    continue
+                pred = np.clip(m.predict(X), 0, None)
+                ceiling = cap.get(name)
+                if ceiling is not None and np.isfinite(ceiling):
+                    pred = np.minimum(pred, ceiling)
+                out.loc[sub.index, self.PREFIX + name] = pred
+            # convert expected quantities into the events FPL scores, then cap
+            # again: a forecast may not exceed the rate the best player in this
+            # position has ever SUSTAINED across a season
+            for src, (dst, _, _) in CONVERT.items():
+                vals = out.loc[sub.index, self.PREFIX + src] * float(conv.get(src, 1.0))
+                ceiling = cap.get(dst)
+                if ceiling is not None and np.isfinite(ceiling):
+                    vals = vals.clip(upper=ceiling)
+                out.loc[sub.index, self.PREFIX + dst] = vals
+            clf = self.defensive.get(key) or self.defensive.get("ALL")
+            if clf is not None:
+                out.loc[sub.index, self.PREFIX + "defensive_return_prob"] = \
+                    clf.predict_proba(X)[:, 1]
+        out.loc[frame["position"].ne("GK"), self.PREFIX + "saves_per90"] = 0.0
+        return out
+
+
+def walk_forward(features: pd.DataFrame, feats: list, holdout: str,
+                 per_position: bool = True) -> pd.DataFrame:
+    train = features[features["season"] < holdout]
+    test = features[features["season"].eq(holdout)]
+    m = RateModel(feats=feats, per_position=per_position).fit(train)
+    return test.join(m.predict(test))

@@ -58,7 +58,7 @@ def pick_vice(rest: pd.DataFrame, rule: str):
 
 def main():
     t0 = time.time()
-    panel = pd.read_pickle(Path.home() / "fpl2_panel_us.pkl")
+    panel = pd.read_pickle(C.cache("fpl2_panel_us.pkl"))
     rows = []
     for f in sorted(glob.glob(str(SCRATCH / "bake" / "us_*.pkl"))):
         season = pd.read_pickle(f)["season"].iloc[0]

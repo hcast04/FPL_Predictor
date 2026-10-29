@@ -1,0 +1,200 @@
+"""
+The minutes model.
+
+Everything in a component forecast multiplies by minutes, so this is the part
+that has to be right. It is hierarchical rather than a single regression,
+because the quantity has genuine structure:
+
+    P(appear)            did he get on the pitch at all
+    P(start  | appear)   did he start
+    P(60+    | appear)   did he cross the appearance-points threshold
+    E[minutes | appear]  how long, given he played
+
+A single regression on minutes blurs the 0 / 60 / 90 mass points that FPL
+actually pays on, which is why the hierarchy is worth the extra models.
+
+Known open defect, carried from the previous project's ledger (S7): the model
+over-predicts players whose role SHRANK and under-predicts those whose role
+grew (+0.124 pts/GW, all three holdout seasons, p<0.0001, does not decay).
+Not addressed here. Addressing it is a separate, gated experiment.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
+
+from . import config as C
+
+
+def targets(panel: pd.DataFrame) -> pd.DataFrame:
+    """The four things the hierarchy predicts, derived from recorded outcomes."""
+    d = panel.copy()
+    mins = pd.to_numeric(d["minutes"], errors="coerce").fillna(0.0)
+    starts = pd.to_numeric(d.get("starts", 0), errors="coerce").fillna(0.0)
+    d["y_appear"] = (mins > 0).astype(int)
+    d["y_start"] = (starts > 0).astype(int)
+    d["y_sixty"] = (mins >= 60).astype(int)
+    d["y_minutes"] = mins
+    return d
+
+
+def _clf(seed=0):
+    return HistGradientBoostingClassifier(
+        max_iter=300, learning_rate=0.06, max_depth=6, min_samples_leaf=40,
+        l2_regularization=1.0, random_state=seed)
+
+
+def _reg(seed=0):
+    return HistGradientBoostingRegressor(
+        max_iter=300, learning_rate=0.06, max_depth=6, min_samples_leaf=40,
+        l2_regularization=1.0, random_state=seed)
+
+
+# Blend the model's minutes prediction toward the player's OWN recent evidence.
+#
+# Measured over 4 seasons (`fpl2/diag_minutes_coldstart.py`, gameweeks 3-10,
+# grouped by current-season start rate computed strictly before each gameweek):
+# the model UNDER-predicts ever-present starters (predicted/actual 0.951 /
+# 0.963 / 0.971 / 0.941) and OVER-predicts rotated players (1.142 / 1.076 /
+# 1.065 / 1.124). It over-shrinks toward the mean while already holding
+# `minutes_r3`/`minutes_r5` in its feature set -- it has the evidence and
+# discounts it.
+#
+# The damage is worst where career history contradicts the present. Haaland in
+# 2026-27 started 7 of 7 for a mean of 88.4 minutes; the model predicted 71.96,
+# a 19% discount applied to every rate he has, which is the whole reason it
+# ranked Bruno (33 pts) above him (58 pts) and captained Bruno three weeks
+# running for 1, 1, 2 points.
+#
+# Weight rises with accumulated within-season evidence:
+#     w = n / (n + K)       n = appearances so far THIS season
+# so gameweek 1 keeps the model's prior entirely and the blend takes over as
+# the season supplies facts. K=0 disables it.
+#
+# SHIPPED ON at K=4.0 on 2026-10-21 by explicit decision, evidence stated
+# plainly: the MECHANISM is solid (S19, 4/4 seasons; S20 verified on the
+# Haaland case; S21 -- it works by DEMOTING over-rated rotated players, not by
+# promoting elites) while the MAGNITUDE is marginal. It FAILED its declared
+# season-level gate at 2/3 (F20). A decision-conditioned re-test (O28) gives
+# +5.09 per changed-captain gameweek, t=2.15, with a perfect zero-variance
+# control -- but the sign test is weak (25W/18L, p~0.19) and the effect is
+# carried by a few large wins. Roughly +76/season equivalent. See O29:
+# probably real, not established.
+RECENCY_K = 4.0
+RECENCY_SOURCE = "minutes_r3"     # the player's own recent minutes, lagged
+
+# How much to trust recent minutes when they are CONSISTENT (O41).
+#
+# `w = n/(n+K)` counts appearances and ignores their spread. Haaland's last
+# five were 90,90,90,90,90 -- zero variance -- and he still gets w = 0.64 at
+# n = 7, leaving the model's 65-minute guess a 36% say against an actual 88.4.
+# A rotated player at the same n is weighted identically. That differential is
+# what inverted the live captaincy: with actual minutes substituted, Bruno
+# 6.394 vs Haaland 6.691 and the armband flips (S20, re-measured on K=4.0).
+#
+#     K_eff = RECENCY_K * (F + (1-F) * min(sd5/45, 1))
+#
+# F = 1.0 is the shipped behaviour exactly. Lower F shrinks K when minutes are
+# steady, raising w toward the player's own evidence, and leaves erratic
+# players where they are. 45 minutes is half a match, used as the scale on
+# which a minutes sd is "large".
+RECENCY_SPREAD_FLOOR = 1.0
+RECENCY_SPREAD_SOURCE = "minutes_sd_r5"
+RECENCY_SPREAD_SCALE = 45.0
+
+
+@dataclass
+class MinutesModel:
+    feats: list
+    p_appear: object = None
+    p_start: object = None
+    p_sixty: object = None
+    minutes_if_appear: object = None
+
+    def fit(self, train: pd.DataFrame) -> "MinutesModel":
+        """
+        Fit on rows that HAD a fixture. A blank gameweek is not evidence about
+        whether a player would have been picked, so it must not train the model.
+        """
+        d = targets(train)
+        d = d[d["fixtures"] > 0]
+        # drop features with no information in THIS fold (see features.usable)
+        from . import features as _f
+        self.feats = _f.usable(d, self.feats)
+        X = d[self.feats].to_numpy("float32")
+        self.p_appear = _clf().fit(X, d["y_appear"].to_numpy())
+
+        played = d[d["y_appear"].eq(1)]
+        Xp = played[self.feats].to_numpy("float32")
+        self.p_start = _clf(1).fit(Xp, played["y_start"].to_numpy())
+        self.p_sixty = _clf(2).fit(Xp, played["y_sixty"].to_numpy())
+        self.minutes_if_appear = _reg(3).fit(Xp, played["y_minutes"].to_numpy())
+        return self
+
+    def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
+        """
+        Returns p_appear, p_start, p_sixty and expected_minutes.
+
+        Probabilities are UNCONDITIONAL (multiplied back through the hierarchy)
+        because that is what the scoring composition expects. A player with no
+        fixture gets zeros throughout -- he cannot score.
+        """
+        X = frame[self.feats].to_numpy("float32")
+        pa = self.p_appear.predict_proba(X)[:, 1]
+        ps = self.p_start.predict_proba(X)[:, 1] * pa
+        p60 = self.p_sixty.predict_proba(X)[:, 1] * pa
+        mins = np.clip(self.minutes_if_appear.predict(X), 0, 90) * pa
+
+        if RECENCY_K > 0.0 and RECENCY_SOURCE in frame.columns:
+            recent = pd.to_numeric(frame[RECENCY_SOURCE], errors="coerce").to_numpy(float)
+            n = pd.to_numeric(frame.get("season_appearances_so_far"),
+                              errors="coerce").fillna(0.0).to_numpy(float)
+            k_eff = np.full(len(frame), RECENCY_K, dtype=float)
+            if RECENCY_SPREAD_FLOOR < 1.0 and RECENCY_SPREAD_SOURCE in frame.columns:
+                sd = pd.to_numeric(frame[RECENCY_SPREAD_SOURCE],
+                                   errors="coerce").to_numpy(float)
+                # an unknown spread (fewer than 2 prior appearances) is treated
+                # as MAXIMALLY uncertain, so a player with no history is never
+                # promoted by this rule
+                spread = np.clip(np.nan_to_num(sd, nan=RECENCY_SPREAD_SCALE)
+                                 / RECENCY_SPREAD_SCALE, 0.0, 1.0)
+                k_eff = RECENCY_K * (RECENCY_SPREAD_FLOOR
+                                     + (1.0 - RECENCY_SPREAD_FLOOR) * spread)
+            w = np.where(np.isfinite(recent), n / (n + k_eff), 0.0)
+            recent = np.nan_to_num(recent, nan=0.0)
+            mins_raw = np.clip(self.minutes_if_appear.predict(X), 0, 90)
+            blended = (1.0 - w) * mins_raw + w * np.clip(recent, 0, 90)
+            mins = blended * pa
+            # carry the same correction into the threshold probabilities, which
+            # scale with playing time; leaving them untouched would make the
+            # components mutually inconsistent
+            scale = np.where(mins_raw > 1e-6, blended / np.maximum(mins_raw, 1e-6), 1.0)
+            ps = np.clip(ps * scale, 0, 1)
+            p60 = np.clip(p60 * scale, 0, 1)
+
+        has_fixture = pd.to_numeric(frame["fixtures"], errors="coerce").fillna(0).to_numpy()
+        blank = has_fixture <= 0
+        # a double gameweek is two chances to score: scale the minutes, but a
+        # probability cannot exceed 1, so cap the threshold terms
+        mult = np.clip(has_fixture, 0, 2)
+        out = pd.DataFrame({
+            "p_appear": np.where(blank, 0.0, np.clip(pa * np.minimum(mult, 2), 0, 1)),
+            "p_start": np.where(blank, 0.0, np.clip(ps, 0, 1)),
+            "p_sixty": np.where(blank, 0.0, np.clip(p60 * np.minimum(mult, 2), 0, 1)),
+            "expected_minutes": np.where(blank, 0.0, mins * mult),
+        }, index=frame.index)
+        return out
+
+
+def walk_forward(features: pd.DataFrame, feats: list, holdout: str) -> pd.DataFrame:
+    """Train on every season strictly before `holdout`, predict `holdout`."""
+    train = features[features["season"] < holdout]
+    test = features[features["season"].eq(holdout)]
+    if train.empty or test.empty:
+        raise ValueError(f"no data for holdout {holdout}")
+    m = MinutesModel(feats=feats).fit(train)
+    pred = m.predict(test)
+    return test.join(pred)

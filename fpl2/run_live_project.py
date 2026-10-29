@@ -16,7 +16,7 @@ PUBLISHED fixture list, and opponent STRENGTH is rewound to week t by
 `_strength_as_of` -- which is the one place the leak would hide (M17).
 """
 from __future__ import annotations
-import json, sys, time, urllib.request
+import json, os, sys, time, urllib.request
 from pathlib import Path
 import numpy as np, pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -27,7 +27,7 @@ API = "https://fantasy.premierleague.com/api"
 HDR = {"User-Agent": "Mozilla/5.0"}
 SEASON = "2026-27"
 ENTRY = int(os.environ.get("FPL_ENTRY") or 0)   # export FPL_ENTRY=<your team id>
-LIVE = Path.home() / "fpl2_live2627.pkl"
+LIVE = C.cache("fpl2_live2627.pkl")
 HORIZON = 4
 
 
@@ -46,12 +46,6 @@ class _WP:
     def fit(self, X, y, sample_weight=None):
         self.est.fit(self.pre.fit_transform(X), y, sample_weight=sample_weight); return self
     def predict(self, X): return self.est.predict(self.pre.transform(X))
-
-
-def _entry():
-    if not ENTRY:
-        raise SystemExit("set FPL_ENTRY=<your team id>")
-    return ENTRY
 
 
 def main():
@@ -99,7 +93,7 @@ def main():
           f"min {cnt['n'].min()}, max {cnt['n'].max()}  "
           f"(blanks: {int((cnt['n']==0).sum())}, doubles: {int((cnt['n']>1).sum())})",
           flush=True)
-    FX.to_pickle(Path.home() / "fpl2_live_fixtures.pkl")
+    FX.to_pickle(C.cache("fpl2_live_fixtures.pkl"))
 
     # `project.frames` iterates gameweeks PRESENT IN THE FEATURE FRAME, which
     # for a live season means finished weeks only -- so it returned exactly one
@@ -124,7 +118,7 @@ def main():
     print(f"[{time.time()-t0:4.0f}s] projected {len(frames)} frames "
           f"(GW{gw}-{gw+HORIZON})", flush=True)
     proj = pd.concat(frames, ignore_index=True)
-    proj.to_pickle(Path.home() / "fpl2_live_proj.pkl")
+    proj.to_pickle(C.cache("fpl2_live_proj.pkl"))
     nm = {e["code"]: e["web_name"] for e in boot["elements"]}
     for g, fr in proj.groupby("gameweek"):
         t = fr.groupby(C.PLAYER_KEY)["xp"].mean().nlargest(5)

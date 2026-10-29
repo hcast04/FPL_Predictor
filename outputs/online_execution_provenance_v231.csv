@@ -1,0 +1,6 @@
+gameweek,model_transfer_count,actual_transfer_count,exact_model_action_followed,execution_provenance,model_action,actual_action
+4,2,1,False,assistant_advised_conservative_override,maguire -> richards; palmer -> saka,maguire -> dunk
+5,2,1,False,assistant_advised_conservative_override,milenković -> n.williams; thiaw -> tarkowski,milenković -> n.williams
+6,2,2,True,model_recommendation_followed,joão pedro -> wissa; n.williams -> gabriel,joão pedro -> wissa; n.williams -> gabriel
+7,1,1,True,model_recommendation_followed,szoboszlai -> anderson,szoboszlai -> anderson
+8,1,0,False,assistant_advised_conservative_override,dunk -> konsa,Roll

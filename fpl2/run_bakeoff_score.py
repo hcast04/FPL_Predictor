@@ -65,7 +65,7 @@ def cluster(d, g):
 
 
 def load():
-    panel = pd.read_pickle(Path.home() / "fpl2_panel_us.pkl")
+    panel = pd.read_pickle(C.cache("fpl2_panel_us.pkl"))
     grids, arms = {}, None
     for s in HOLDOUTS:
         parts = []

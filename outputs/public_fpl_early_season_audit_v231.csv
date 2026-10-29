@@ -1,0 +1,2 @@
+gameweek,rows,fpl_xp_mae,fpl_xp_bias,fpl_xp_spearman,fpl_top10_actual,oracle_top10_actual,fpl_top10_oracle_efficiency
+1,610,1.5862295081967213,-0.0363934426229508,0.4927424415585565,51.0,138.0,0.3695652173913043

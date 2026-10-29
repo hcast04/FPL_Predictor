@@ -76,7 +76,7 @@ def run(holdout: str):
     feats = pd.read_pickle(SCRATCH / "feats_us.pkl")
     names = pickle.load(open(SCRATCH / "names_us.pkl", "rb"))
     tf = pd.read_pickle(SCRATCH / "tf.pkl")
-    panel = pd.read_pickle(Path.home() / "fpl2_panel_us.pkl")
+    panel = pd.read_pickle(C.cache("fpl2_panel_us.pkl"))
     feats = feats[feats["season"] <= holdout]
     tr_p = feats[feats["season"] < holdout]; tr_t = tf[tf["season"] < holdout]
     m = model.ComponentModel(feats=list(names)).fit(tr_p, tr_t)

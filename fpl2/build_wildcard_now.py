@@ -45,20 +45,12 @@ def get(u):
         urllib.request.Request(u, headers=HDR), timeout=60))
 
 
-def _entry():
-    if not ENTRY:
-        raise SystemExit(
-            "set your FPL team id first:  export FPL_ENTRY=1234567\n"
-            "(it is the number in fantasy.premierleague.com/entry/<id>/)")
-    return ENTRY
-
-
 def main():
-    out = pd.read_pickle(Path.home() / "fpl2_live_chip_out.pkl")
+    out = pd.read_pickle(C.cache("fpl2_live_chip_out.pkl"))
     boot = get(f"{API}/bootstrap-static/")
     finished = sorted(e["id"] for e in boot["events"] if e.get("finished"))
     nxt = next((e for e in boot["events"] if e.get("is_next")), None)
-    picks = get(f"{API}/entry/{_entry()}/event/{max(finished)}/picks/")
+    picks = get(f"{API}/entry/{ENTRY}/event/{max(finished)}/picks/")
     bank = picks["entry_history"]["bank"] / 10.0
     value = picks["entry_history"]["value"] / 10.0
     # `entry_history.value` is the PURCHASE-price valuation. A wildcard sells
@@ -93,7 +85,7 @@ def main():
     # mid-season wildcard has a known fixture list the GW1 decision does not.
     target = int(nxt["id"])
     H = int(os.environ.get("WC_HORIZON", "1"))
-    pjp = Path.home() / "fpl2_live_proj.pkl"
+    pjp = C.cache("fpl2_live_proj.pkl")
     if pjp.exists():
         pj = pd.read_pickle(pjp)
         win = pj[(pj.gameweek >= target) & (pj.gameweek < target + H)]

@@ -37,20 +37,12 @@ def get(u):
         urllib.request.Request(u, headers=HDR), timeout=60))
 
 
-def _entry():
-    if not ENTRY:
-        raise SystemExit(
-            "set your FPL team id first:  export FPL_ENTRY=1234567\n"
-            "(it is the number in fantasy.premierleague.com/entry/<id>/)")
-    return ENTRY
-
-
 def main():
-    out = pd.read_pickle(Path.home() / "fpl2_live_chip_out.pkl")
+    out = pd.read_pickle(C.cache("fpl2_live_chip_out.pkl"))
     boot = get(f"{API}/bootstrap-static/")
     finished = sorted(e["id"] for e in boot["events"] if e.get("finished"))
     nxt = next(e for e in boot["events"] if e.get("is_next"))
-    picks = get(f"{API}/entry/{_entry()}/event/{max(finished)}/picks/")
+    picks = get(f"{API}/entry/{ENTRY}/event/{max(finished)}/picks/")
     bank = picks["entry_history"]["bank"] / 10.0
 
     el = pd.DataFrame([{
@@ -70,7 +62,7 @@ def main():
     # fixture against Coventry and 2.42 on his actual GW8 fixture; Botman
     # 4.57 against 2.17. The whole plan was a week stale.
     target = int(nxt["id"])
-    proj_path = Path.home() / "fpl2_live_proj.pkl"
+    proj_path = C.cache("fpl2_live_proj.pkl")
     if proj_path.exists():
         pr = pd.read_pickle(proj_path)
         pr = pr[pr.gameweek.eq(target)]
@@ -117,7 +109,7 @@ def main():
     # discount it and a MILP cannot.
     try:
         from fpl2 import style as _sty
-        _panel = pd.read_pickle(Path.home() / "fpl2_panel_us.pkl")
+        _panel = pd.read_pickle(C.cache("fpl2_panel_us.pkl"))
         _mv = _sty.live_movers(_panel, squad[["player_code", "team"]])
         squad = squad.merge(_mv, on="player_code", how="left")
         _m = squad[squad["moved"].fillna(False)]
