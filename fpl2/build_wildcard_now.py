@@ -164,7 +164,9 @@ def main():
     sq.loc[sq[C.PLAYER_KEY].eq(cap[C.PLAYER_KEY]), "XI"] = "CAPTAIN"
 
     print("\n" + "=" * 68)
-    print(f"WILDCARD SQUAD — optimiser, budget £{budget:.1f}m, horizon 1")
+    # was hardcoded "horizon 1", so the header lied whenever WC_HORIZON was
+    # set -- the squad and the xp changed underneath an unchanged caption.
+    print(f"WILDCARD SQUAD — optimiser, budget £{budget:.1f}m, horizon {H}")
     print("=" * 68)
     print(sq[["name", "position", "team", "cost", "xp", "owned", "XI"]]
           .to_string(index=False,

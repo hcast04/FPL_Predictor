@@ -4995,6 +4995,128 @@ Not touched here. Fixing it changes the fitted model.
 
 ---
 
+## S64 / O61 — holding BOTH SIDES of a fixture: confirmed, and marginal
+
+Raised by the user on 2026-10-30 after the GW9 wildcard squad came back with
+**ten of fifteen players in six matches, five of those matches containing
+players from both teams** -- Haaland (MCI) captained against Verbruggen and
+De Cuyper (BHA) in the same fixture.
+
+Nothing on squad-internal correlation existed anywhere in this ledger before
+this entry. The optimiser maximises `sum(xp)` with no covariance term, so it
+cannot see the structure at all.
+
+### What was measured, and what needs no model
+
+The claim is about the COVARIANCE of realised points between two players. That
+is an outcome, not a forecast, so eleven seasons of results answer it directly
+with no fitting. 400k within-match player pairs, points de-meaned by gameweek
+(a high-scoring week lifts everyone and would read as positive correlation in
+every group alike).
+
+| pair type | corr | cov | seasons |
+|---|---:|---:|---|
+| opposite, attacker vs defender | **-0.182** | -1.47 | **11/11 negative** |
+| opposite, defender vs defender | -0.126 | -0.88 | 11/11 negative |
+| opposite, attacker vs attacker | -0.053 | -0.44 | 11/11 negative |
+| same team, defender vs defender | **+0.417** | +3.32 | 11/11 positive |
+| same team, attacker vs defender | +0.086 | +0.75 | 10/11 positive |
+| same team, attacker vs attacker | +0.055 | +0.47 | 11/11 positive |
+| **unrelated, different matches** | **+0.004** | +0.03 | 5/11 -- **CONTROL** |
+
+**The control is the entry.** Two players in different matches in the same
+gameweek cannot influence each other, so that row must come out at zero. It
+does, on all three position classes, with the sign splitting 5/11, 6/11, 5/10
+across seasons. Without it, "opposing players are negatively correlated" would
+be indistinguishable from a position-mix or shared-week artefact.
+
+A first pass truncated at 400k pairs while iterating in panel order, which drew
+every within-match pair from the earliest four seasons and the control from all
+eleven -- the two populations would have differed by era as well as by the
+thing under test. Matches are now sampled at random across all eleven. The
+correction moved att_vs_def from -0.234 to -0.182.
+
+### What it does to the GW9 squad
+
+`Var(total) = sum Var_i + 2 sum Cov_ij`, captain weighted x2 (so his variance
+enters x4 and his covariances x2). Empirical per-player variance of realised
+points, played only: GK 7.87, DEF 9.09, MID 8.29, FWD 10.67.
+
+The XI has 8 within-match pairs, 6 opposing (-21.51) and 2 same-team (+7.58):
+
+| | |
+|---|---:|
+| sum of individual variances | 132.29 |
+| covariance contribution | **-13.94** |
+| sd as built | **10.88** |
+| sd if every pair were unrelated | 11.50 |
+
+**10.5% of variance, 0.62 points of standard deviation.**
+
+### The mean is untouched, and that is not a caveat but the point
+
+`E[sum] = sum E[.]` whatever the covariance. The shipped 49.93 xp is correct
+either way, and no amount of fixture conflict biases it. **The optimiser is
+not wrong to ignore this** -- it is maximising expectation, and expectation is
+linear. The only thing covariance moves is spread.
+
+### Price of breaking it
+
+Banning every Brighton player -- killing the captain's own conflict, the
+largest single piece -- costs **0.11 xp** (49.93 -> 49.83) and swaps
+Verbruggen + De Cuyper for Trafford + Murillo. It buys sd 10.88 -> 11.41.
+
+So, FOR GW9 ALONE: 0.11 points of expected return for +0.53 of sd.
+
+### The one-week price was the wrong frame, and the user caught it
+
+That 0.11 is a ONE-WEEK cost for a FOUR-WEEK commitment, and a wildcard squad
+is held. Priced across GW9-12 with the fixture list:
+
+| over GW9-12 | keep BHA pair | swap to Trafford+Murillo |
+|---|---:|---:|
+| expected points | **196.51** | 194.60 |
+| sd | 22.64 | 23.03 |
+| conflict pairs | **15** | **19** |
+
+**The swap costs 1.91 xp, buys 0.39 sd, and INCREASES conflicts from 15 to
+19.** Worse on every dimension once the horizon is honest.
+
+**Conflicts are structurally unavoidable.** Eleven players across nine clubs in
+a ten-match gameweek always collide. Breaking one only relocates it: with
+Murillo in, he faces Haaland in GW10, and Trafford's Leeds face Rogers'
+Chelsea in GW11. There is no conflict-free squad to reach, so "reduce
+conflicts" is not an objective -- it is a treadmill.
+
+Recommendation RETRACTED. The squad ships as the optimiser built it.
+
+### Verdict
+
+**CONFIRMED MECHANISM, MARGINAL EFFECT** -- the R31 pattern again, for the
+fifth time. 11/11 seasons on every within-match class is about as clean as
+this project has measured anything, and it is worth 0.62 sd on a 50-point week
+against a single-season noise floor of 112-125. It does not justify a
+covariance term in the objective.
+
+It IS worth surfacing in the output, like S58's club-change flag: a human
+deciding between two near-equal squads can read "your captain plays your
+goalkeeper" and a MILP maximising expected points cannot.
+
+**R54: a confirmed mechanism with a tiny effect must be reported with its
+SIZE, not its significance.** 11/11 seasons sounds decisive and the quantity
+is 0.62 points. I flagged this to the user as the headline critical finding
+before measuring it, which was wrong by an order of magnitude. Measure first,
+then decide how loudly to speak.
+
+**R55: price a HELD decision over the horizon it is held for.** The swap was
+recommended off a GW9 number for a squad that stands four gameweeks, and the
+sign of the advice flipped when the horizon was made honest (-0.11 -> -1.91,
+and the conflict count rose). Same error class as M28/S57, where a one-week
+reading of the opening horizon disagreed with the swept one. The user asked
+"have you considered future gameweeks" and the answer was no.
+
+---
+
 ---
 
 # Appendix — script index
@@ -5042,3 +5164,4 @@ Not touched here. Fixing it changes the fitted model.
 | `fpl2/run_captain_squad.py` | Captain rule inside a budget-constrained squad |
 | `fpl2/run_ceiling_gate.py` | Ceiling features A/B + G1 (F17) |
 | `fpl2/run_ceiling_minperiods.py` | min_periods robustness for the ceiling signal |
+| `fpl2/run_conflict.py` | Does holding both sides of a fixture cost anything? (S64/O61) |
