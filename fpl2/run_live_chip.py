@@ -114,6 +114,15 @@ def main():
         print(f"      us_xg coverage in {SEASON}: {cov['us_xg'].notna().mean()*100:.1f}%",
               flush=True)
 
+    # `PANEL` was declared at the top of this file and never written, so the
+    # only producer of `fpl2_panel_us.pkl` was an ad-hoc command in some past
+    # session. `plan_gw.py` reads it for the S58 club-change aid and was
+    # therefore reading a panel frozen on 2026-10-22 -- a cache with no
+    # producer ages silently and nothing in the pipeline can notice.
+    panel.to_pickle(PANEL)
+    print(f"[{time.time()-t0:4.0f}s] wrote {PANEL.name} "
+          f"({PANEL.stat().st_size/1e6:.0f} MB)", flush=True)
+
     feats, names = features.build(panel, tf)
     out = model.walk_forward(feats, tf, names, SEASON)
     print(f"[{time.time()-t0:4.0f}s] forecast done, {len(names)} features", flush=True)

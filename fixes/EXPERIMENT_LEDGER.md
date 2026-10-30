@@ -4874,6 +4874,127 @@ their header, so a wrong week is visible in the first line of output.
 previous week's fixtures. The holdout results are unaffected -- they use
 `model.walk_forward`, which is given its holdout explicitly.
 
+## S63 / M31 — the live forecast could not see the gameweek just played
+
+Found by running the whole pipeline from scratch on 2026-10-30, after
+re-scraping Understat for the live season. The refreshed source added all ten
+GW8 matches. **The GW9 forecast did not move: Spearman 1.0000, mean delta
++0.000, sd 0.001 across 669 players.** That non-result was the finding.
+
+### The defect
+
+`run_live_project.py` read `gw = max(finished)` and passed it to
+`project.project` as `from_gw`. But `project(from_gw=g, to_gw=g)`
+early-returns `model.predict(feats[gameweek == g], ...)`, which is
+byte-identical to what `model.walk_forward` does for week g -- so **`from_gw`
+means the week being DECIDED, not the week last played.**
+
+Every form feature is `shift(1).rolling(w)`. So the week-8 row averages weeks
+5-7, and standing at the GW9 deadline the model was handed form through GW7.
+Verified on the data rather than read off the code:
+
+    points GW1-8    [6, 12, 3, 8, 14, 3, 0, 2]
+    points_r3 at GW8 = 5.6667
+      mean(GW5,6,7) = 5.6667   <-- MATCH
+      mean(GW6,7,8) = 1.6667
+
+5/5 players tested. This is M30's defect class -- `max(gameweek)` is the
+obvious handle and is always wrong -- and M30's own entry records that only
+*three* of the four tools were given an explicit decide-week. This was the
+fourth. Its frame COUNT was fixed then; its `from_gw` was not.
+
+### What it cost
+
+Scored with the project's own instrument: neutral squads, XI + captain,
+paired by (squad, gameweek), season-clustered on G = 8.
+
+| arm | base row | form |
+|---|---|---|
+| A (shipped live) | `project(from_gw=g-1, to_gw=g)` | through g-2 |
+| B (== `walk_forward`) | `project(from_gw=g, to_gw=g)` | through g-1 |
+
+| season | B − A, pts/season |
+|---|---:|
+| 2018-19 | +46.9 |
+| 2019-20 | +25.4 |
+| 2020-21 | +50.3 |
+| 2021-22 | +60.2 |
+| 2022-23 | +14.3 |
+| 2023-24 | +54.4 |
+| 2024-25 | −13.7 |
+| 2025-26 | +50.6 |
+
+**+36.1 pts/season, se 9.0, t +4.02, p 0.005, 95% CI [+14.9, +57.4],
+MDE 25.1, 7/8 seasons. Resolvable.** At G = 8 the bar is |t| > 2.36 (R32).
+
+### The negative control is what makes this readable
+
+Arm B must reproduce `walk_forward` EXACTLY, because it is supposed to BE
+`walk_forward`. It did: `max|B − walk_forward| = 0.00e+00` on all seven
+seasons the control could run on. Without that, "arm B scores higher" would
+only mean the harness built something different, not something better.
+
+**This is not a new feature.** Every number in this ledger was measured under
+`walk_forward` semantics. The live path served the model a different input
+from the one it was validated on, so the fix restores train/serve agreement
+rather than adding anything.
+
+### What it changes for GW9 2026-27
+
+| | form thru GW7 | form thru GW8 |
+|---|---|---|
+| chip policy | wildcard | wildcard |
+| captain | B.Fernandes 4.89 | Calvert-Lewin 4.11 |
+| best transfer | Anderson → Manzambi +1.34 | Havertz → N.Jackson +1.86 |
+| wildcard total | 53.56 | 49.93 |
+| cost of max-2/club | −0.30 | **+0.00** |
+
+B.Fernandes rank 2 → 36, Guéhi 23 → 180, Tzolakis 9 → 65. Haaland 1 → 1.
+**The chip decision is robust to the defect; the squad is not.**
+
+### The fix, and the assertion that keeps it honest
+
+`gw` now comes from `bootstrap-static`'s `is_next` (R52). The decide-week
+feature row does not exist, because that week is unplayed, so it is built from
+the week-`last` rows with the gameweek advanced and every stat column blanked
+-- the lagged windows then average the PLAYED weeks ending at `last`.
+
+`run_live_project.py` now **raises** if that row is not
+`mean(GW last-2 .. GW last)`. Negative-controlled by forcing `gw = last`, the
+old behaviour, and confirming it fires.
+
+**R53: a forecast that ignores fresh data is not stable, it is deaf.** The
+Understat refresh changing nothing looked like reassuring reproducibility.
+Reproducibility and deafness are indistinguishable from the output alone --
+the question to ask is whether new information COULD have moved it.
+
+---
+
+## Pre-existing, not fixed — `walk_forward` cannot hold out 2025-26
+
+Reproduced with shipped code only, three calls, no harness:
+
+    walk_forward(feats, tf, names, "2025-26")  ValueError: window shape
+                                               cannot be larger than input
+                                               array shape
+    walk_forward(feats, tf, names, "2026-27")  OK  (5220, 183)
+
+`RateModel.fit` filters its design matrix through `features.usable()`
+(`rates.py:271`), whose docstring names this exact sklearn error as the thing
+it exists to prevent. `fit_defensive_within_season` (`rates.py:312`) then does
+`sub[self.feats]` with **no such filter**, on a much smaller within-season
+slice where a column that was informative across ten seasons can be constant
+or all-NaN.
+
+Consequence: the most recent completed season -- the only one carrying
+defensive-contribution data -- cannot be used as a holdout. S63 therefore ran
+its negative control on 7 of 8 seasons; 2025-26's arm B is unverified, though
+its effect (+50.6) is in line with the rest.
+
+Not touched here. Fixing it changes the fitted model.
+
+---
+
 ---
 
 # Appendix — script index
