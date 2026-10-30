@@ -66,6 +66,46 @@ Everything is reproducible from the original notebook: `./run.sh patch` applies
 ten anchored edits and aborts without writing if any anchor is missing or
 ambiguous, so the diff can be audited rather than trusted.
 
+## Pushing — this repo is `hcast04`, not the work account
+
+`gh` on this machine is logged in to two GitHub accounts, and its credential
+helper hands git whichever one is **active**. So a push from here can be
+rejected with
+
+    remote: Permission to hcast04/FPL_Predictor.git denied to hcastanos-mdmsystems
+
+even though the commit author is correct -- the author and the authenticated
+pusher are different things, and only the first is set by `user.email`.
+
+Bind the repo to the right account once, after cloning:
+
+```bash
+U=hcast04
+git config --local --add credential.https://github.com.helper ""
+git config --local --add credential.https://github.com.helper "!f() { test \"\$1\" = get && printf 'username=$U\\npassword=%s\\n' \"\$(/usr/bin/gh auth token --user $U)\"; }; f"
+```
+
+The first `--add` resets the inherited global helper chain for github.com; the
+second asks `gh` for that **named** account's token rather than the active one.
+Nothing global changes, no other repo is affected, and no token is written to
+disk -- it is read from the `gh` keyring at push time.
+
+Keep the helper on one line. A shell line-continuation inside the quoted value
+does work, but only because `sh` re-parses the stored string, which is not
+worth relying on.
+
+Verify without pushing anything:
+
+```bash
+printf 'protocol=https\nhost=github.com\n\n' | git credential fill  # -> username=hcast04
+git push --dry-run origin HEAD:refs/heads/_cred_check                # write auth, creates nothing
+```
+
+This lives in `.git/config`, which is not tracked, so a fresh clone needs it
+again. If the token is ever revoked the helper returns an empty password and
+the push fails with a plain 403, rather than silently falling back to the
+other account.
+
 ## The headline finding
 
 FPL's `expected_assists` is not on the same scale as a realised assist, and the
