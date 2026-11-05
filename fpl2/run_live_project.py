@@ -86,7 +86,8 @@ def main():
         cur = live.build(SEASON); cur.to_pickle(LIVE)
 
     raw = pd.concat([data.load_raw(extended=True), cur], ignore_index=True)
-    raw["kickoff"] = pd.to_datetime(raw["kickoff_time"], errors="coerce", utc=True)
+    raw["kickoff"] = pd.to_datetime(raw["kickoff_time"], errors="coerce",
+                                    utc=True, format="ISO8601")
     panel = data.build_panel(raw); tf = team.team_fixtures(raw)
     panel = understat.attach(panel)
 

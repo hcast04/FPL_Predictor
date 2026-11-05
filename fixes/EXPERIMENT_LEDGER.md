@@ -5117,6 +5117,97 @@ reading of the opening horizon disagreed with the swept one. The user asked
 
 ---
 
+## M32 — ten-season training silently deleted Understat from four seasons
+
+Found 2026-11-05 while chasing an Understat outage. The two sources spell the
+same instant differently:
+
+    public exports (2016-17..2021-22)   2016-08-15T19:00:00Z
+    historical_fpl.csv.gz (2022-23..)   2022-08-05 19:00:00+00:00
+
+**Each parses at 100% ALONE.** `pd.to_datetime` infers ONE format from the
+first non-null value, so concatenated with the exports first -- which is
+exactly what `load_raw(extended=True)` does -- all **113,582 rows** of the
+main CSV coerced to NaT under `errors="coerce"`.
+
+`understat.join_season` matches on fixture DATE. With no kickoff there is no
+date, so **2022-23, 2023-24, 2024-25 and 2025-26 joined ZERO Understat rows**
+and trained on NaN `us_*` features. The four most recent complete seasons --
+the ones closest to the live season -- were the ones that lost it.
+
+| season | us_xg coverage before | after |
+|---|---:|---:|
+| 2016-17..2021-22 | 94.5-98.3% | unchanged |
+| 2022-23 | **0.0%** | **97.8%** |
+| 2023-24 | **0.0%** | **98.4%** |
+| 2024-25 | **0.0%** | **98.9%** |
+| 2025-26 | **0.0%** | **98.8%** |
+
+Fixed with `format="ISO8601"` at all five parse sites (`data.load_raw`,
+`understat.join_season`, `understat.staleness`, both live runners).
+
+**Why it survived.** S46 turned on ten-season training and M27 turned on
+Understat; neither is wrong alone and the defect exists only in their
+intersection. `errors="coerce"` is the mechanism -- it converts a format
+disagreement into silent data loss, and the column type stays datetime so
+nothing looks broken. Coverage was only ever printed for the LIVE season,
+which parsed fine, so every run reported a healthy number while four training
+seasons sat empty.
+
+Effect on the live forecast, GW10 2026-27: Haaland 6.34 -> **6.77**, and the
+chip policy's answer changed.
+
+**R56: when two sources are concatenated, assert the parse per source.** A
+column that parses at 100% in isolation can parse at 0% after a concat, and
+`errors="coerce"` makes that silent. The new test uses `extended=True`
+deliberately -- the default fixture passes on the broken code and guards
+nothing.
+
+---
+
+## M33 — the live chip policy had lost its secretary rule
+
+`chips.rolling_policy` returns a STATEFUL callable. It closes over `seen`:
+observe the first LOOK=0.37 of each window, record the best benefit, then fire
+on the first week that beats it. `simulate.simulate_season` calls it once per
+gameweek in order, so `seen` fills -- that is the version measured at +119.8
+pts/season over 8 holdout seasons.
+
+`run_live_chip.py` called it **once**, for the week being decided. `seen` was
+empty, so past the observation cut the firing test
+
+    b > seen.get(key, 0.0)
+
+collapsed to `b > 0`. **Any chip with a positive benefit fired immediately.**
+The live path has never run the policy that was measured.
+
+At GW10 2026-27 it returned `bboost` on a bench worth 11.26 against a bar of
+11.94 set in GW5 -- i.e. it would have spent a chip on a bench worse than one
+already seen and passed over.
+
+`chips.warm_up(policy, grid, gameweeks, squad_at, played)` replays the earlier
+weeks. Wired into `run_live_chip.py`.
+
+**The squad passed to the replay is the one held AT the deadline**, which is
+the PREVIOUS gameweek's picks: FPL's `event/{gw}/picks/` reports the squad
+AFTER that week's transfers. Measuring a chip week against its own post-chip
+squad understates the benefit enormously -- GW9's wildcard reads **8.89**
+against the new squad and **19.96** against the one actually held. My first
+replay made exactly this error and concluded the GW9 wildcard had been wrong;
+with the correct squad it beats its bar of 17.02 and **fires**, so the
+decision was right under the measured policy too.
+
+Negative control in `tests/test_chips.py`: a COLD policy must still fire on a
+bench far worse than one already observed. If it ever stops, `warm_up` is no
+longer what makes the difference and the other tests prove nothing.
+
+**R57: a stateful policy measured in a loop cannot be called once.** The
+backtest and the live path differed in how many times they called the same
+function, and that alone changed the rule being applied. Same family as M31
+(train/serve mismatch) and M30 (the gameweek being decided).
+
+---
+
 ---
 
 # Appendix — script index
@@ -5165,3 +5256,4 @@ reading of the opening horizon disagreed with the swept one. The user asked
 | `fpl2/run_ceiling_gate.py` | Ceiling features A/B + G1 (F17) |
 | `fpl2/run_ceiling_minperiods.py` | min_periods robustness for the ceiling signal |
 | `fpl2/run_conflict.py` | Does holding both sides of a fixture cost anything? (S64/O61) |
+| `fpl2/pull_understat.py` | Re-scrape Understat; distinguishes an outage from a scraper bug (M32) |

@@ -105,7 +105,10 @@ def join_season(fpl: pd.DataFrame, season: str) -> pd.DataFrame:
           else "kickoff" if "kickoff" in f.columns else None)
     if kc is None:
         return pd.DataFrame()
-    f["date"] = (pd.to_datetime(f[kc], errors="coerce", utc=True)
+    # format="ISO8601": sources spell the same instant differently and
+    # inference from the first value NaTs the rest (see data.load_raw)
+    f["date"] = (pd.to_datetime(f[kc], errors="coerce", utc=True,
+                                format="ISO8601")
                  .dt.tz_localize(None).dt.normalize())
     f = f[f["minutes"].gt(0)]
     if f.empty or us.empty:
@@ -187,6 +190,48 @@ def attach(panel: pd.DataFrame, seasons=None) -> pd.DataFrame:
                 us_xg_chain=("us_xg_chain", "sum"),
                 us_xg_buildup=("us_xg_buildup", "sum")))
     return panel.merge(j, on=["season", "gameweek", "player_code"], how="left")
+
+
+def staleness(panel: pd.DataFrame, season: str) -> dict:
+    """
+    How far behind the panel is the Understat source for `season`?
+
+    Understat is a THIRD-PARTY scrape and the panel is not. When the site is
+    unreachable -- on 2026-11-05 every URL returned one 26,719-byte "We will
+    come back soon" page -- the last good pickle stays on disk and `attach`
+    joins it without complaint. The us_* features then silently describe an
+    older week than the FPL columns beside them, which is the same failure as
+    a cache with no producer (M31): nothing in the pipeline can notice.
+
+    Returns the last gameweek on each side and the gap. The caller decides how
+    loud to be; `fpl2/pull_understat.py` is how the gap gets closed.
+    """
+    pl = panel[panel["season"].eq(season)]
+    panel_gw = int(pl["gameweek"].max()) if len(pl) else 0
+    path = RAW_DIR / f"understat_{season}.pkl"
+    if not path.exists():
+        return {"season": season, "panel_gw": panel_gw, "us_gw": None,
+                "gap": None, "stale": True, "reason": "no understat file"}
+    us = pd.read_pickle(path).reset_index()
+    us_date = pd.to_datetime(us["game"].str.slice(0, 10), errors="coerce").max()
+    kc = ("kickoff_first" if "kickoff_first" in pl.columns
+          else "kickoff_time" if "kickoff_time" in pl.columns else None)
+    us_gw = None
+    if kc is not None and pd.notna(us_date):
+        # Understat's `game` string carries a DATE, so `us_date` is midnight.
+        # Comparing a 15:00 kickoff against it drops every match later that
+        # same day and reports the last complete season as one week stale --
+        # caught by the negative control, which is the only reason this
+        # function is trustworthy at all. Normalise both sides to the day.
+        d = pl.assign(_k=pd.to_datetime(pl[kc], errors="coerce", utc=True,
+                                        format="ISO8601")
+                      .dt.tz_localize(None).dt.normalize())
+        played = d[d["_k"] <= us_date]
+        us_gw = int(played["gameweek"].max()) if len(played) else 0
+    gap = (panel_gw - us_gw) if us_gw is not None else None
+    return {"season": season, "panel_gw": panel_gw, "us_gw": us_gw, "gap": gap,
+            "stale": bool(gap), "last_match": us_date,
+            "reason": "understat behind the panel" if gap else ""}
 
 
 def validate(fpl: pd.DataFrame, season: str, verbose: bool = True) -> dict:

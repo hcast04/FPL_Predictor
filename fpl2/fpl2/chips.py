@@ -35,6 +35,48 @@ DOUBLE_BONUS = 1.6  # a double gameweek is worth ~this much more to a team chip
 BLANK_WEIGHT = 2.0  # points per squad player with no fixture, for the free hit
 
 
+def warm_up(policy, grid: pd.DataFrame, gameweeks, squad_at,
+            played: dict | None = None, signal: str = "xp") -> None:
+    """
+    Replay earlier gameweeks so the secretary rule has its memory.
+
+    `rolling_policy` returns a STATEFUL callable: it closes over `seen`, and
+    the secretary rule works by OBSERVING the first LOOK of each window,
+    recording the best benefit, then firing on the first week that beats it.
+    `simulate.simulate_season` calls the policy once per gameweek in order, so
+    `seen` fills up -- that is the version measured at +119.8 pts/season.
+
+    `run_live_chip.py` called it ONCE, for the week being decided. `seen` was
+    therefore empty and, past the observation cut, the firing test
+    `b > seen.get(key, 0.0)` collapsed to `b > 0`: **any chip with a positive
+    benefit fired immediately.** The live path was not running the policy that
+    was measured. At GW10 of 2026-27 it said `bboost` on a bench worth 11.26
+    against a bar of 11.94 set in GW5.
+
+    `squad_at(gw)` must return the squad held AT THAT DEADLINE -- which is the
+    PREVIOUS gameweek's picks, because FPL's `event/{gw}/picks/` reports the
+    squad AFTER that week's transfers. Measuring a wildcard week against its
+    own post-wildcard squad understates the benefit enormously (GW9 2026-27:
+    8.89 against the new squad, 19.96 against the one actually held).
+
+    Decisions are discarded; only `seen` matters.
+    """
+    played = played or {}
+    for gw in sorted(gameweeks):
+        squad = squad_at(gw)
+        if not squad:
+            continue
+        week = grid[grid["gameweek"].eq(gw)]
+        if week.empty:
+            continue
+        avail = [c for c in CHIP_WINDOWS
+                 if c not in {k for k, v in played.items() if v < gw}]
+        try:
+            policy(int(gw), list(squad), week, avail)
+        except Exception:                                      # noqa: BLE001
+            continue
+
+
 def rolling_policy(grid: pd.DataFrame, signal: str = "xp"):
     """
     A chip policy that never reads a fixture it could not have known.

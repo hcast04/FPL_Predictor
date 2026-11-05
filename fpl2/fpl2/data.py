@@ -92,7 +92,21 @@ def load_raw(extended: bool = False) -> pd.DataFrame:
             d[c] = pd.to_numeric(d[c], errors="coerce")
     d["position"] = d["position"].map(_POS_MAP)
     d = d[d["position"].notna()].copy()
-    d["kickoff"] = pd.to_datetime(d["kickoff_time"], errors="coerce", utc=True)
+    # `format="ISO8601"` is NOT decoration. The two sources spell the same
+    # instant differently -- the public exports use "2016-08-15T19:00:00Z" and
+    # `historical_fpl.csv.gz` uses "2022-08-05 19:00:00+00:00" -- and
+    # `to_datetime` infers ONE format from the first non-null value, then
+    # coerces everything that disagrees to NaT. With `extended=True` the
+    # exports come first, so all four seasons in the main CSV (2022-23 to
+    # 2025-26, 113,582 rows) silently lost their kickoff. Each source parses
+    # at 100% ALONE, which is why this survived: it only appears once they are
+    # concatenated, i.e. only on the ten-season path S46 added.
+    #
+    # Downstream, `understat.join_season` matches on fixture DATE, so those
+    # four seasons joined ZERO Understat rows and trained on NaN us_* features
+    # -- the four most recent complete seasons, the ones that matter most.
+    d["kickoff"] = pd.to_datetime(d["kickoff_time"], errors="coerce",
+                                  utc=True, format="ISO8601")
     return apply_coverage_mask(d)
 
 

@@ -91,7 +91,8 @@ def main():
     # `kickoff_first`, and `understat.join_season` matches teams by FIXTURE
     # DATE -- so the live season silently joined ZERO Understat rows and
     # `attach` then overwrote the historical us_* columns with NaN.
-    raw["kickoff"] = pd.to_datetime(raw["kickoff_time"], errors="coerce", utc=True)
+    raw["kickoff"] = pd.to_datetime(raw["kickoff_time"], errors="coerce",
+                                    utc=True, format="ISO8601")
     panel = data.build_panel(raw)
     tf = team.team_fixtures(raw)
     print(f"[{time.time()-t0:4.0f}s] panel {panel.shape}, "
@@ -112,6 +113,21 @@ def main():
     cov = panel[panel["season"].eq(SEASON) & (panel["minutes"] > 0)]
     if "us_xg" in panel.columns and len(cov):
         print(f"      us_xg coverage in {SEASON}: {cov['us_xg'].notna().mean()*100:.1f}%",
+              flush=True)
+    # Understat is a third-party scrape and the panel is not. When the site is
+    # down the last good pickle stays on disk and `attach` joins it silently,
+    # so the us_* features describe an older week than the FPL columns beside
+    # them. Coverage alone does not say that -- it fell 99.4% -> 88.3% on
+    # 2026-11-05 and nothing in the run objected.
+    st = understat.staleness(panel, SEASON)
+    if st.get("stale"):
+        print(f"\n  !! UNDERSTAT IS STALE: panel has GW{st['panel_gw']}, "
+              f"understat only GW{st['us_gw']} (gap {st['gap']}).\n"
+              f"     The us_* features are {st['gap']} gameweek(s) behind the FPL\n"
+              f"     columns. Run `python fpl2/pull_understat.py` to close it.\n",
+              flush=True)
+    else:
+        print(f"      understat current: GW{st['us_gw']} = panel GW{st['panel_gw']}",
               flush=True)
 
     # `PANEL` was declared at the top of this file and never written, so the
@@ -196,6 +212,37 @@ def main():
     avail = [c for c in ("wildcard", "freehit", "bboost", "3xc")
              if c not in played]
     policy = chips.rolling_policy(grid, "xp")
+
+    # WARM THE SECRETARY RULE. `rolling_policy` is stateful: it observes the
+    # first LOOK of each window and only fires on a week that beats what it
+    # saw. The backtest calls it once per gameweek so that memory fills; this
+    # file called it ONCE, leaving `seen` empty, and past the cut the firing
+    # test `b > seen.get(key, 0.0)` became `b > 0` -- every chip with a
+    # positive benefit fired. The live path was not the measured policy.
+    #
+    # `squad_at` returns the squad held AT the deadline, i.e. the PREVIOUS
+    # week's picks: `event/{gw}/picks/` reports the squad AFTER that week's
+    # transfers, so a wildcard week measured against its own new squad shows
+    # almost no benefit (GW9 2026-27: 8.89 post vs 19.96 pre).
+    _picks_cache: dict = {}
+
+    def squad_at(gw: int):
+        src = gw - 1
+        if src < 1:
+            return []
+        if src not in _picks_cache:
+            try:
+                pk = api(f"entry/{ENTRY}/event/{src}/picks/")
+                _picks_cache[src] = [el[p["element"]]["code"]
+                                     for p in pk["picks"] if p["element"] in el]
+            except Exception:                                  # noqa: BLE001
+                _picks_cache[src] = []
+        return _picks_cache[src]
+
+    chips.warm_up(policy, grid, [g for g in finished if g < decide_gw],
+                  squad_at, played={c["name"]: c["event"]
+                                    for c in hist_api.get("chips", [])})
+    print(f"  secretary rule warmed on GW{min(finished)}-{decide_gw-1}", flush=True)
     decision = policy(decide_gw, squad, week, avail)
 
     print("\n" + "=" * 70)
