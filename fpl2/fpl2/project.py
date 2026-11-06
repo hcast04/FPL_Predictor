@@ -83,7 +83,32 @@ def project(model, feats: pd.DataFrame, tf: pd.DataFrame, season: str,
     if base.empty:
         return base
     tgt_tf = tf[tf["season"].eq(season) & tf["gameweek"].eq(to_gw)]
-    if to_gw == from_gw or tgt_tf.empty:
+
+    # THE WEEK BEING DECIDED NEEDS ITS OPPONENTS TOO.
+    #
+    # `to_gw == from_gw` used to return `model.predict(base, tf[gw == from_gw])`
+    # unconditionally, so the caller needed no special case for k = 0. In a
+    # BACKTEST that is right: week `from_gw` has been played, so its rows in
+    # `tf` carry the lagged strength columns.
+    #
+    # Live, the week being decided is UNPLAYED. `run_live_project` appends it
+    # from the published fixture list, which carries only gameweek/team/
+    # opponent/is_home -- no `att_r5`, no `opp_def_r5`, nothing. Those rows went
+    # straight into `model.predict` and the clean-sheet model, starved of
+    # opponent strength, collapsed to ONE probability per venue: every away
+    # side 27.5%, every home side 19.0%, in GW10 of 2026-27. Backwards, and
+    # identical for Hull at Arsenal and Leeds at home. GW11 and GW12 were fine
+    # because they take the full branch below, which rewinds strength properly.
+    #
+    # So the shortcut is only safe when the target rows actually carry
+    # strength. When they do not, fall through and build the team frame the
+    # same way every other projected week is built. `_strength_as_of` filters
+    # `gameweek <= from_gw` and `.last()` skips NaN, so an unplayed `from_gw`
+    # correctly inherits the last PLAYED week's values.
+    _has_strength = (not tgt_tf.empty
+                     and all(c in tgt_tf.columns for c in TEAM_LAG)
+                     and tgt_tf[TEAM_LAG].notna().any(axis=None))
+    if tgt_tf.empty or (to_gw == from_gw and _has_strength):
         return model.predict(base, tf[tf["season"].eq(season)
                                       & tf["gameweek"].eq(from_gw)])
 

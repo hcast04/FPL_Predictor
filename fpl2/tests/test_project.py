@@ -128,3 +128,80 @@ def test_frames_cover_the_horizon_and_carry_xp_plan(fitted):
     assert [int(f["gameweek"].iloc[0]) for f in fr] == list(range(FROM, FROM + len(fr)))
     for f in fr:
         assert "xp_plan" in f.columns and f["xp_plan"].notna().all()
+
+
+# --- M34: the week being DECIDED is unplayed and carries no strength -------
+
+class _Spy:
+    """Records the team frame it is handed, and returns a usable prediction."""
+    def __init__(self):
+        self.teams = None
+
+    def predict(self, players, teams):
+        self.teams = teams.copy()
+        out = players.copy()
+        out["xp"] = 1.0
+        if "fixtures" not in out.columns:
+            out["fixtures"] = 1.0
+        return out
+
+
+def _tf_for(gw, with_strength):
+    rows = []
+    for a, b in (("AAA", "BBB"), ("CCC", "DDD")):
+        for t, o, h in ((a, b, 1.0), (b, a, 0.0)):
+            r = {"season": SEASON, "gameweek": gw, "team": t, "opponent": o,
+                 "is_home": h, "fixture_id": f"f{gw}{t}"}
+            if with_strength:
+                for c in project.TEAM_LAG:
+                    r[c] = 1.0
+            rows.append(r)
+    return pd.DataFrame(rows)
+
+
+def _feats_for(gw):
+    rows = []
+    for t in ("AAA", "BBB", "CCC", "DDD"):
+        rows.append({"season": SEASON, "gameweek": gw, C.PLAYER_KEY: hash(t) % 9999,
+                     "team": t, "position": "DEF", "fixtures": 1.0,
+                     "is_home": 1.0, "n_fixtures": 1.0, "gw": float(gw)})
+    return pd.DataFrame(rows)
+
+
+def test_decided_week_without_strength_still_gets_its_opponents():
+    """
+    A target week appended from the published fixture list carries only
+    gameweek/team/opponent/is_home. `to_gw == from_gw` used to short-circuit
+    and hand those strengthless rows straight to the model, so the
+    clean-sheet layer saw no opponent at all: GW10 of 2026-27 came back with
+    TWO clean-sheet probabilities, one per venue, instead of twenty.
+    """
+    played = _tf_for(9, with_strength=True)
+    future = _tf_for(10, with_strength=False)
+    tf = pd.concat([played, future], ignore_index=True)
+    feats = pd.concat([_feats_for(9), _feats_for(10)], ignore_index=True)
+
+    spy = _Spy()
+    project.project(spy, feats, tf, SEASON, 10, 10)
+    assert spy.teams is not None, "model was never called"
+    have = [c for c in project.TEAM_LAG if c in spy.teams.columns]
+    assert have, "team frame reached the model with no strength columns at all"
+    assert spy.teams[have].notna().any(axis=None), (
+        "the decided week reached the model with every strength column NaN -- "
+        "the clean-sheet layer has no opponent to price")
+
+
+def test_decided_week_with_strength_still_takes_the_shortcut():
+    """
+    NEGATIVE CONTROL. In a BACKTEST the target week HAS been played, so its
+    rows carry strength and `project(g, g)` must still be the plain forecast.
+    S63's whole result rests on that equivalence, so the fix above must not
+    reroute it.
+    """
+    tf = pd.concat([_tf_for(9, True), _tf_for(10, True)], ignore_index=True)
+    feats = pd.concat([_feats_for(9), _feats_for(10)], ignore_index=True)
+    spy = _Spy()
+    project.project(spy, feats, tf, SEASON, 10, 10)
+    # the shortcut passes tf's own rows through untouched: no opp_* columns
+    assert not [c for c in spy.teams.columns if c.startswith("opp_att")], (
+        "a played target week should take the shortcut, not be rebuilt")

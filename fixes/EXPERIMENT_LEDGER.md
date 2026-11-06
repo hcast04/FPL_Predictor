@@ -5208,6 +5208,85 @@ function, and that alone changed the rule being applied. Same family as M31
 
 ---
 
+## M34 — the week being DECIDED reached the model with no opponent
+
+Found 2026-11-06 because the user asked whether Trafford was the right
+goalkeeper with Spurs in form. Checking it exposed the clean-sheet layer.
+
+`project.project` short-circuits on `to_gw == from_gw`:
+
+    if to_gw == from_gw or tgt_tf.empty:
+        return model.predict(base, tf[... gameweek == from_gw])
+
+In a BACKTEST that is right -- week `from_gw` has been played, so its rows in
+`tf` carry the lagged strength columns (`att_r5`, `opp_def_r5`, ...).
+
+Live, **the week being decided is UNPLAYED**. `run_live_project` appends it
+from the published fixture list, which carries only gameweek / team /
+opponent / is_home. Those strengthless rows went straight into
+`model.predict`, and the clean-sheet model, with no opponent to price,
+collapsed to ONE probability per venue:
+
+| | GW10 (decided) | GW11 | GW12 | GW13 |
+|---|---|---|---|---|
+| distinct clean_sheet_prob | **2** | 20 | 20 | 20 |
+| range | 0.190 / 0.275 | 0.099-0.533 | 0.086-0.401 | 0.105-0.498 |
+
+Every away side 27.5%, every home side 19.0% -- and **backwards**: Hull away
+at Arsenal was priced for more clean sheets than Leeds at home. GW11-13 were
+unaffected because they take the full branch, which rewinds strength through
+`_strength_as_of`.
+
+**Scope: every defender and goalkeeper, in the only week that matters.** The
+forward weeks, which nobody acts on directly, were correct; the week being
+decided was not. Same shape as M31 -- the live path and the backtest path
+diverged, and the backtest is where all the testing happened.
+
+### The fix
+
+Take the shortcut only when the target rows actually carry strength:
+
+    _has_strength = (not tgt_tf.empty
+                     and all(c in tgt_tf.columns for c in TEAM_LAG)
+                     and tgt_tf[TEAM_LAG].notna().any(axis=None))
+    if tgt_tf.empty or (to_gw == from_gw and _has_strength):
+        ...shortcut...
+
+Otherwise fall through and build the team frame like any other projected
+week. `_strength_as_of` filters `gameweek <= from_gw` and `.last()` skips
+NaN, so an unplayed `from_gw` correctly inherits the last PLAYED week.
+
+### Controls
+
+**The backtest path must not move**, because S63's entire result rests on
+`project(g, g)` being byte-identical to `walk_forward`. Verified on six
+gameweeks of 2024-25: `max|project(g,g) - model.predict| = 0.000e+00`.
+
+`tests/test_project.py` carries both directions: a strengthless target week
+must reach the model WITH opponent strength, and a played target week must
+still take the shortcut. Reverting the fix fails the first with every
+strength column NaN.
+
+### What it changed for GW10 2026-27
+
+| | before | after |
+|---|---|---|
+| XI + captain | 49.58 | **50.95** |
+| best transfer | Muñoz -> Truffert +0.73 | Muñoz -> Truffert **+1.20** |
+| goalkeeper | Trafford starts | **Verbruggen** starts, Trafford benched |
+| Pickford (GK, EVE) | 2.91 | 4.45 |
+
+The user's football read -- Spurs are scoring, Leeds are not, so Trafford is
+a poor pick -- and the model agreed once it could see the opponent.
+
+**R58: a short-circuit that is safe in the backtest is not automatically safe
+live.** Three defects now (M31, M33, M34) have the same shape: a code path
+whose assumptions hold for a PLAYED week, reused for an UNPLAYED one. Any
+branch keyed on "this week" should assert what it needs is actually there
+rather than trusting the caller to have populated it.
+
+---
+
 ---
 
 # Appendix — script index
