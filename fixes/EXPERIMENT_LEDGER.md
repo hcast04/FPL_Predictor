@@ -5287,6 +5287,99 @@ rather than trusting the caller to have populated it.
 
 ---
 
+## S65 / M35 — when a free hit is worth playing, measured
+
+`fpl2/run_freehit.py`. Asked by the user after GW10 2026-27: "how do we
+measure when to take a free hit?" Nothing in this ledger had measured it --
+S23 put the free hit "on the most-BLANK gameweek" as part of a calendar
+policy and never priced the trigger itself.
+
+### What a blank week costs
+
+Within-squad: each neutral squad's score in a blank-affected week against its
+OWN mean in genuinely clean weeks. That difference is what a free hit
+recovers, and it is where the decision lives.
+
+| your blanks | n | XI pts | baseline | **loss** | se | MDE |
+|---|---:|---:|---:|---:|---:|---:|
+| 0 | 20 | 67.6 | 65.6 | -2.0 | 12.5 | 35.1 |
+| 1-2 | 68 | 61.4 | 67.1 | 5.7 | 3.1 | 8.8 |
+| 3 | 40 | 54.0 | 67.3 | **13.3** | 1.7 | 4.7 |
+| 4-5 | 78 | 43.3 | 67.3 | **24.0** | 1.8 | 5.0 |
+| 6+ | 106 | 32.0 | 66.4 | **34.4** | 4.4 | 12.3 |
+
+3+ blanks: 26.8 (t 16.88), 4+: 29.9 (t 13.63), 6+: 34.3 (t 7.83). All
+p < 0.0001 at G = 10, all **RESOLVABLE**.
+
+**The penalty is CONVEX** -- roughly 3 points per blank below three, roughly
+ten each above it.
+
+Frequency: **3.9 four-plus-blank weeks per season**, 12 in GW1-19 against 27
+in GW20-38, and only 5 of 10 seasons had one before GW19. The first-half free
+hit expires unused about half the time.
+
+### Two measurement traps, both of which gave a wrong answer first
+
+**The compact panel OMITS blank rows.** Counting `fixtures == 0` on `panel`
+reports ZERO blank gameweeks in eleven seasons, which reads as a finding and
+is an artefact: a blanking team is ABSENT, not present with zero. Blanks must
+be counted as teams missing from the gameweek.
+
+**`with_blanks` reindexes a departed player into every remaining week.** He
+then reads as blank for ever. **44 of 83** flagged four-plus-blank weeks had
+NO team blanking at all -- 2024-25 alone contributed 22. Excluding them took
+the count from 8.3/season to 3.9.
+
+A third error was mine and not the data's: the first version gave BOTH sides
+hindsight, comparing a perfect free hit against a perfect XI from the held
+squad. That gap is ~84 points at every blank count and measures only that
+foresight is valuable. The within-squad framing above replaced it.
+
+### M35 — the free hit was priced as the best eleven in the game
+
+`chips.rolling_policy` estimated it as `optimise.best_xi(pool, signal)` over
+every player with a fixture. `best_xi` enforces position bounds and **neither
+budget nor the club cap**, so the chip was valued at a squad nobody can buy.
+
+Fixed: `_freehit_benefit` runs the MILP under the squad's own value and
+`MAX_PER_CLUB`. **14 ms per call, 1.1 minutes over a full eight-season
+backtest.**
+
+**The effect is small.** On GW11 2026-27 the unconstrained benefit is 4.78
+and the legal one 4.49 -- it overstated by 0.30 xp -- because the best eleven
+by xp happened to cost GBP84.1m inside a GBP99.5m budget and already
+respected the club cap. On realised points the gap is often exactly zero.
+Correct, and not where the money is.
+
+### BLANK_WEIGHT: miscalibrated, but not inert and not tuned
+
+`BLANK_WEIGHT = 2.0` is hand-chosen and is PARTLY double counting -- a
+blanked player already carries xp = 0, so the held XI has lost his points
+before this is added. Not PURELY double counting, because the free-hit side
+of the comparison also shrinks in a blank week, so the raw benefit does not
+track blanks cleanly (85.8 / 81.9 / 77.9 / 80.8 / 92.1 across 0 / 1-2 / 3 /
+4-5 / 6+ blanks). My first description of it as simple double counting was
+wrong and is corrected here.
+
+Before tuning a free parameter, ask whether it moves anything. Swept over
+0, 1, 2, 4, 8, 16 across 20 (season, squad) runs: the first chip week and the
+chip chosen were **unchanged in 17 of 20**. So it is LIVE but weakly so --
+an 8x change moves 15% of decisions.
+
+**Left at 2.0.** The measurement says the true penalty is convex and far
+larger above three blanks, so 2.0 is the wrong number AND the wrong shape.
+But S50's +119.8 pts/season was measured with it, S27 showed season totals
+are chaotic in exactly this kind of knob, and I have not demonstrated that
+any replacement WINS. `rolling_policy(..., blank_weight=w)` now takes an
+override so the sweep is reproducible.
+
+**R59: measure whether a free parameter moves any DECISION before tuning its
+VALUE.** Counting decision flips is cheap; sweeping season totals is
+expensive and, per S27, often uninterpretable. 17/20 unchanged says most of
+the tuning effort would have bought nothing.
+
+---
+
 ---
 
 # Appendix — script index
@@ -5336,3 +5429,4 @@ rather than trusting the caller to have populated it.
 | `fpl2/run_ceiling_minperiods.py` | min_periods robustness for the ceiling signal |
 | `fpl2/run_conflict.py` | Does holding both sides of a fixture cost anything? (S64/O61) |
 | `fpl2/pull_understat.py` | Re-scrape Understat; distinguishes an outage from a scraper bug (M32) |
+| `fpl2/run_freehit.py` | When is a free hit worth playing? Is BLANK_WEIGHT inert? (S65/M35) |

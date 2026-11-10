@@ -32,7 +32,33 @@ SEASON_GAMEWEEKS = 38   # a season is 38 gameweeks whether or not they exist yet
 KNOWN = 4          # gameweeks of fixture schedule visible at any deadline
 LOOK = 0.37        # secretary-rule observation fraction of each window
 DOUBLE_BONUS = 1.6  # a double gameweek is worth ~this much more to a team chip
+
+# S65. `BLANK_WEIGHT` is a hand-chosen constant and it is PARTLY double
+# counting: a blanked player already carries xp = 0 in the grid, so the held
+# XI has already lost his points before this is added. It is not pure double
+# counting, because the free-hit side of the comparison also shrinks in a
+# blank week -- fewer players have fixtures -- so the raw benefit does not
+# track blanks cleanly (85.8 / 81.9 / 77.9 / 80.8 / 92.1 across 0 / 1-2 / 3 /
+# 4-5 / 6+ blanks on four seasons of realised points).
+#
+# What IS measured, within-squad over ten seasons and resolvable at G = 10,
+# is the loss a blank week inflicts relative to that squad's own clean weeks:
+#
+#     your blanks   0-2     3      4-5     6+
+#     loss          3-6    15.5   26.3   37.7     (MDE 4.5 / 7.0 / 12.0)
+#
+# So the penalty is CONVEX -- about 3 points per blank below three, about ten
+# each above it -- and a single linear coefficient cannot express that. The
+# value is left at 2.0 because the policy's +119.8 pts/season (S50) was
+# measured with it; `fpl2/run_freehit.py` sweeps it honestly.
 BLANK_WEIGHT = 2.0  # points per squad player with no fixture, for the free hit
+
+# A real free hit is a LEGAL squad: the budget you actually have and at most
+# `MAX_PER_CLUB`. `optimise.best_xi` enforces neither, so the free hit was
+# priced as the best eleven IN THE GAME and came out systematically
+# optimistic. Measured at 14 ms per MILP call, which is 1.1 minutes over a
+# full eight-season backtest -- affordable.
+FREEHIT_BUDGET = None   # None -> the squad's own value; a float overrides
 
 
 def warm_up(policy, grid: pd.DataFrame, gameweeks, squad_at,
@@ -77,7 +103,47 @@ def warm_up(policy, grid: pd.DataFrame, gameweeks, squad_at,
             continue
 
 
-def rolling_policy(grid: pd.DataFrame, signal: str = "xp"):
+def _freehit_benefit(week, held, xi, signal, blank_weight) -> float:
+    """
+    What one week of ANY LEGAL squad is worth over the one you hold.
+
+    The squad a free hit buys is bounded by your budget and by
+    `MAX_PER_CLUB`; the previous version took `best_xi` over every player
+    with a fixture, which respects neither. On realised points the gap is
+    often zero -- the best eleven is frequently cheap -- but on model xp it
+    is not, because xp and price are correlated and the unconstrained eleven
+    fills up with premiums you could not all afford.
+    """
+    pool = week[week["fixtures"] > 0]
+    if pool.empty:
+        return 0.0
+    mine = float(xi[signal].sum())
+    budget = FREEHIT_BUDGET
+    if budget is None:
+        cost = pd.to_numeric(held.get("cost"), errors="coerce")
+        budget = float(cost.sum()) if cost is not None and cost.notna().any() \
+            else float(C.BUDGET)
+    agg = pool.groupby(C.PLAYER_KEY, as_index=False).agg(
+        **{signal: (signal, "max"), "cost": ("cost", "first"),
+           "position": ("position", "first"), "team": ("team", "first")})
+    agg = agg[pd.to_numeric(agg["cost"], errors="coerce").gt(0)]
+    best = None
+    if len(agg) >= C.SQUAD_SIZE:
+        sq = optimise.optimise_squad(agg, signal, budget=budget)
+        if sq is not None:
+            best = optimise.best_xi(
+                sq.merge(agg[[C.PLAYER_KEY, signal]], on=C.PLAYER_KEY,
+                         suffixes=("", "_a")), signal)
+    if best is None:                      # no legal squad: fall back, flagged
+        best = optimise.best_xi(pool, signal)
+    if best is None:
+        return 0.0
+    b = float(best[signal].sum()) - mine
+    return b + blank_weight * float((held["fixtures"] <= 0).sum())
+
+
+def rolling_policy(grid: pd.DataFrame, signal: str = "xp",
+                   blank_weight: float = None):
     """
     A chip policy that never reads a fixture it could not have known.
 
@@ -97,6 +163,7 @@ def rolling_policy(grid: pd.DataFrame, signal: str = "xp"):
     # the data is partial.
     season = list(range(1, SEASON_GAMEWEEKS + 1))
     present = sorted(grid["gameweek"].unique())
+    blank_weight = BLANK_WEIGHT if blank_weight is None else float(blank_weight)
     seen: dict = {}
 
     def policy(gw, squad, week, avail):
@@ -123,10 +190,7 @@ def rolling_policy(grid: pd.DataFrame, signal: str = "xp"):
                 bench = held[~held[C.PLAYER_KEY].isin(xi[C.PLAYER_KEY])]
                 b = float(bench[signal].sum()) * (DOUBLE_BONUS if my_dbl else 1.0)
             elif chip == "freehit":
-                pool = week[week["fixtures"] > 0]
-                bx = optimise.best_xi(pool, signal)
-                b = float(bx[signal].sum() - xi[signal].sum()) if bx is not None else 0.0
-                b += BLANK_WEIGHT * my_blank
+                b = _freehit_benefit(week, held, xi, signal, blank_weight)
             else:                                    # wildcard
                 allp = vis[vis["fixtures"] > 0].groupby(C.PLAYER_KEY)[signal].mean()
                 mn = mine[mine["fixtures"] > 0].groupby(C.PLAYER_KEY)[signal].mean()

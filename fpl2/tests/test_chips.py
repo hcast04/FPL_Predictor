@@ -17,6 +17,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fpl2 import config as C      # noqa: E402
 from fpl2 import chips           # noqa: E402
+from fpl2 import optimise        # noqa: E402
 
 QUOTA = [("GK", 2), ("DEF", 5), ("MID", 5), ("FWD", 3)]
 
@@ -90,3 +91,61 @@ def test_warm_up_tolerates_missing_squads():
                   lambda gw: [] if gw % 2 else squad)   # half return nothing
     week = grid[grid["gameweek"].eq(10)]
     assert policy(10, squad, week, ["bboost"]) == "bboost"
+
+
+# --- S65: a free hit buys a LEGAL squad, not the best eleven in the game ---
+
+def _market(n_cheap=40, n_premium=11):
+    """A league where the best eleven is unaffordable and all one club."""
+    rows = []
+    for i in range(n_premium):                     # brilliant, dear, one club
+        rows.append({C.PLAYER_KEY: 1000 + i, "xp": 10.0, "cost": 15.0,
+                     "team": "RICH", "fixtures": 1,
+                     "position": ["GK", "DEF", "DEF", "DEF", "DEF", "MID",
+                                  "MID", "MID", "MID", "FWD", "FWD"][i]})
+    for i in range(n_cheap):                       # ordinary, cheap, spread
+        rows.append({C.PLAYER_KEY: 2000 + i, "xp": 3.0, "cost": 4.0,
+                     "team": f"T{i % 12}", "fixtures": 1,
+                     "position": ["GK", "DEF", "MID", "FWD"][i % 4]})
+    return pd.DataFrame(rows)
+
+
+def test_freehit_respects_budget_and_club_cap():
+    """
+    The eleven premiums cost GBP165m and are all one club. A free hit cannot
+    buy them, so the benefit must come out far below what an unconstrained
+    `best_xi` would claim.
+    """
+    week = _market()
+    held = week[week[C.PLAYER_KEY] >= 2000].head(15).copy()
+    xi = optimise.best_xi(held.reset_index(drop=True), "xp")
+    naive = optimise.best_xi(week, "xp")
+    naive_b = float(naive["xp"].sum() - xi["xp"].sum())
+    real_b = chips._freehit_benefit(week, held, xi, "xp", 0.0)
+    assert real_b < naive_b, (
+        f"constrained benefit {real_b:.2f} should be below the unconstrained "
+        f"{naive_b:.2f}")
+    assert naive["cost"].sum() > C.BUDGET, "fixture is wrong: XI is affordable"
+    assert naive["team"].value_counts().max() > C.MAX_PER_CLUB, (
+        "fixture is wrong: the unconstrained XI already respects the club cap")
+
+
+def test_freehit_benefit_counts_blanks_once_per_weight():
+    """`blank_weight` is a per-blank addition and must scale exactly."""
+    week = _market()
+    held = week[week[C.PLAYER_KEY] >= 2000].head(15).copy()
+    held.loc[held.index[:3], "fixtures"] = 0
+    xi = optimise.best_xi(held.reset_index(drop=True), "xp")
+    b0 = chips._freehit_benefit(week, held, xi, "xp", 0.0)
+    b5 = chips._freehit_benefit(week, held, xi, "xp", 5.0)
+    assert abs((b5 - b0) - 15.0) < 1e-9, (
+        f"three blanks at weight 5 should add 15.0, added {b5 - b0:.3f}")
+
+
+def test_rolling_policy_accepts_a_blank_weight_override():
+    """The sweep in run_freehit.py depends on this being wired through."""
+    bench = {gw: (1.0 if gw <= 8 else 9.0) for gw in range(1, 13)}
+    grid, squad = _grid(bench)
+    for w in (0.0, 8.0):
+        pol = chips.rolling_policy(grid, "xp", blank_weight=w)
+        assert pol(10, squad, grid[grid["gameweek"].eq(10)], ["bboost"]) == "bboost"
