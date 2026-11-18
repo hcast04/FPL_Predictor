@@ -149,3 +149,51 @@ def test_rolling_policy_accepts_a_blank_weight_override():
     for w in (0.0, 8.0):
         pol = chips.rolling_policy(grid, "xp", blank_weight=w)
         assert pol(10, squad, grid[grid["gameweek"].eq(10)], ["bboost"]) == "bboost"
+
+
+# --- S66: the blank penalty is a HINGE, default threshold 0 = the old form --
+
+def _held_with_blanks(n_blank):
+    week = _market()
+    held = week[week[C.PLAYER_KEY] >= 2000].head(15).copy()
+    if n_blank:
+        held.loc[held.index[:n_blank], "fixtures"] = 0
+    return week, held
+
+
+def test_threshold_zero_is_exactly_the_old_linear_penalty():
+    """
+    NEGATIVE CONTROL for the whole hinge change. The shipped default must be
+    byte-identical to the flat form S50 measured at +119.8 pts/season; if it
+    is not, every prior chip result silently changes meaning.
+    """
+    for n in (0, 1, 3, 6):
+        week, held = _held_with_blanks(n)
+        xi = optimise.best_xi(held.reset_index(drop=True), "xp")
+        hinge = chips._freehit_benefit(week, held, xi, "xp", 2.0, 0)
+        flat = chips._freehit_benefit(week, held, xi, "xp", 0.0, 0) + 2.0 * n
+        assert abs(hinge - flat) < 1e-9, (
+            f"{n} blanks: hinge {hinge:.4f} != flat {flat:.4f}")
+
+
+def test_hinge_pays_nothing_below_its_threshold():
+    """`w * max(0, blanks - thr)` -- two blanks under a threshold of 2 is 0."""
+    week, held = _held_with_blanks(2)
+    xi = optimise.best_xi(held.reset_index(drop=True), "xp")
+    free = chips._freehit_benefit(week, held, xi, "xp", 0.0, 0)
+    assert abs(chips._freehit_benefit(week, held, xi, "xp", 8.0, 2) - free) < 1e-9
+    week, held = _held_with_blanks(4)          # two ABOVE the threshold
+    xi = optimise.best_xi(held.reset_index(drop=True), "xp")
+    free = chips._freehit_benefit(week, held, xi, "xp", 0.0, 0)
+    got = chips._freehit_benefit(week, held, xi, "xp", 8.0, 2)
+    assert abs((got - free) - 16.0) < 1e-9, f"expected +16.0, got {got - free:.3f}"
+
+
+def test_rolling_policy_threads_the_threshold():
+    """run_freehit_policy.py's arms depend on this reaching the benefit."""
+    bench = {gw: (1.0 if gw <= 8 else 9.0) for gw in range(1, 13)}
+    grid, squad = _grid(bench)
+    for thr in (0, 3):
+        pol = chips.rolling_policy(grid, "xp", blank_weight=8.0,
+                                   blank_threshold=thr)
+        assert pol(10, squad, grid[grid["gameweek"].eq(10)], ["bboost"]) == "bboost"

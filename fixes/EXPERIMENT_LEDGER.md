@@ -5380,6 +5380,69 @@ the tuning effort would have bought nothing.
 
 ---
 
+## S66 — a correctly SHAPED free-hit penalty is worth nothing
+
+`fpl2/run_freehit_policy.py`. S65 measured the blank penalty as CONVEX --
+about 3 points per blank below three, about ten each above it -- while
+`chips.BLANK_WEIGHT` applies a flat 2.0 from the first blank. That says the
+shipped shape is WRONG. It does not say correcting it WINS, and S27 is the
+standing warning that season totals are chaotic in exactly this kind of knob.
+So it was measured.
+
+Penalty parameterised as a hinge, `w * max(0, blanks - threshold)`, with
+threshold 0 reproducing the old linear form exactly.
+
+| arm | penalty | season mean | diff vs A | t | p | **MDE** | seasons |
+|---|---|---:|---:|---:|---:|---:|---:|
+| A shipped | `2 * n` | 2164 | ref | | | | |
+| B none | `0` | 2161 | -3.5 | -1.11 | 0.302 | 8.9 | 2/8 |
+| C hinge | `8 * max(0, n-2)` | 2164 | -0.9 | -0.31 | 0.763 | 7.9 | 2/8 |
+| D hinge | `10 * max(0, n-3)` | 2164 | -0.4 | -0.13 | 0.903 | 9.1 | 2/8 |
+
+Metric 2, K = 10 restarts, paired on (squad, season), season-clustered,
+G = 8 so the bar is |t| > 2.36. **Nothing is resolvable.** Every effect is
+under 3.5 points against MDEs of 8-9, and no arm wins more than 2 of 8
+seasons.
+
+**Negative control.** Arm A must reproduce `rolling_policy()` with no
+overrides bit-for-bit, or the harness is not comparing what it claims:
+`max|A - shipped| = 0.000e+00` on all eight seasons.
+
+### Why it cannot win, visible in the per-season rows
+
+**2023-24 came out IDENTICAL across all four arms** -- the penalty changed no
+decision at all that season. That matches S65.2, where an 8x sweep of
+BLANK_WEIGHT moved the chosen week or chip in only 3 of 20 runs. A parameter
+that rarely changes a DECISION cannot move a season total, however wrong its
+value is.
+
+The direction is also worth stating: all three alternatives came out slightly
+NEGATIVE. Not significantly, but nothing suggests a better-shaped penalty is
+being held back by noise.
+
+### Standing
+
+**Default unchanged: `BLANK_WEIGHT = 2.0`, `BLANK_THRESHOLD = 0`**, which is
+byte-identical to what S50 measured at +119.8 pts/season. The hinge is wired
+through `rolling_policy(..., blank_weight=, blank_threshold=)` so the sweep
+is reproducible, and this entry is the record of why it is off.
+
+**Sixth instance of R31** -- confirmed mechanism, unmeasurable effect. S65
+established the shape is wrong; S66 establishes that fixing it buys nothing.
+Both are true and only the second one decides what ships.
+
+**R60: a parameter that rarely changes a decision cannot be tuned into a
+result.** S65.2 said 17/20 decisions were unmoved by an 8x sweep; S66 then
+spent 32 minutes of compute confirming the season total agreed. The cheap
+decision-flip count predicted the expensive outcome, and should be run FIRST
+whenever a free parameter is a candidate for tuning.
+
+**Where the free-hit lever actually is: the TRIGGER, not the penalty shape.**
+S65 measured it -- 4+ of your fifteen blanking is worth ~30 points, and such
+weeks arrive ~3.9 times a season, 27 of 39 of them after GW20.
+
+---
+
 ---
 
 # Appendix — script index
@@ -5430,3 +5493,4 @@ the tuning effort would have bought nothing.
 | `fpl2/run_conflict.py` | Does holding both sides of a fixture cost anything? (S64/O61) |
 | `fpl2/pull_understat.py` | Re-scrape Understat; distinguishes an outage from a scraper bug (M32) |
 | `fpl2/run_freehit.py` | When is a free hit worth playing? Is BLANK_WEIGHT inert? (S65/M35) |
+| `fpl2/run_freehit_policy.py` | Does a convex free-hit penalty win points? (S66) |

@@ -53,6 +53,17 @@ DOUBLE_BONUS = 1.6  # a double gameweek is worth ~this much more to a team chip
 # measured with it; `fpl2/run_freehit.py` sweeps it honestly.
 BLANK_WEIGHT = 2.0  # points per squad player with no fixture, for the free hit
 
+# S65 measured the loss as CONVEX -- about 3 points per blank below three,
+# about ten each above it -- which a single linear coefficient cannot express.
+# `BLANK_THRESHOLD` makes the penalty a HINGE:
+#
+#     penalty = BLANK_WEIGHT * max(0, blanks - BLANK_THRESHOLD)
+#
+# Threshold 0 is exactly the old linear form, so the default reproduces every
+# prior result unchanged and S50's +119.8 keeps its meaning. `run_freehit.py`
+# sweeps both parameters.
+BLANK_THRESHOLD = 0
+
 # A real free hit is a LEGAL squad: the budget you actually have and at most
 # `MAX_PER_CLUB`. `optimise.best_xi` enforces neither, so the free hit was
 # priced as the best eleven IN THE GAME and came out systematically
@@ -103,7 +114,8 @@ def warm_up(policy, grid: pd.DataFrame, gameweeks, squad_at,
             continue
 
 
-def _freehit_benefit(week, held, xi, signal, blank_weight) -> float:
+def _freehit_benefit(week, held, xi, signal, blank_weight,
+                     blank_threshold: int = None) -> float:
     """
     What one week of ANY LEGAL squad is worth over the one you hold.
 
@@ -139,11 +151,13 @@ def _freehit_benefit(week, held, xi, signal, blank_weight) -> float:
     if best is None:
         return 0.0
     b = float(best[signal].sum()) - mine
-    return b + blank_weight * float((held["fixtures"] <= 0).sum())
+    thr = BLANK_THRESHOLD if blank_threshold is None else int(blank_threshold)
+    blanks = float((held["fixtures"] <= 0).sum())
+    return b + blank_weight * max(0.0, blanks - thr)
 
 
 def rolling_policy(grid: pd.DataFrame, signal: str = "xp",
-                   blank_weight: float = None):
+                   blank_weight: float = None, blank_threshold: int = None):
     """
     A chip policy that never reads a fixture it could not have known.
 
@@ -164,6 +178,8 @@ def rolling_policy(grid: pd.DataFrame, signal: str = "xp",
     season = list(range(1, SEASON_GAMEWEEKS + 1))
     present = sorted(grid["gameweek"].unique())
     blank_weight = BLANK_WEIGHT if blank_weight is None else float(blank_weight)
+    blank_threshold = (BLANK_THRESHOLD if blank_threshold is None
+                       else int(blank_threshold))
     seen: dict = {}
 
     def policy(gw, squad, week, avail):
@@ -190,7 +206,8 @@ def rolling_policy(grid: pd.DataFrame, signal: str = "xp",
                 bench = held[~held[C.PLAYER_KEY].isin(xi[C.PLAYER_KEY])]
                 b = float(bench[signal].sum()) * (DOUBLE_BONUS if my_dbl else 1.0)
             elif chip == "freehit":
-                b = _freehit_benefit(week, held, xi, signal, blank_weight)
+                b = _freehit_benefit(week, held, xi, signal, blank_weight,
+                                     blank_threshold)
             else:                                    # wildcard
                 allp = vis[vis["fixtures"] > 0].groupby(C.PLAYER_KEY)[signal].mean()
                 mn = mine[mine["fixtures"] > 0].groupby(C.PLAYER_KEY)[signal].mean()
