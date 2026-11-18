@@ -277,28 +277,53 @@ def main():
             print(f"   {r['name']:<16}{r['team']:<5} raw {r['raw']:5.2f} -> "
                   f"{r['hz_xp']:5.2f}   {(r['news'] or '')[:40]}")
         print()
+    # The gain must be the SAME objective as section B -- XI + captain, summed
+    # over the horizon -- or the two columns are different quantities printed
+    # side by side. A player-level delta overstates a BENCHED player's worth
+    # badly: selling Thiago reads +15.04 as a raw point difference and +3.83
+    # as a change in what the eleven actually score, because he was never in
+    # the eleven to begin with.
+    wide = (hz.pivot_table(index="player_code", columns="gameweek",
+                           values="adj").fillna(0.0))
+    sq_h = squad.merge(wide, on="player_code", how="left").fillna(
+        {g: 0.0 for g in gws})
+
+    def horizon_value(frame):
+        tot = 0.0
+        for g in gws:
+            f = frame.assign(xp=frame[g])
+            x = optimise.best_xi(f, "xp")
+            if x is None:
+                return -np.inf
+            tot += float(x.xp.sum()) + float(x.xp.max())
+        return tot
+
+    hz_base = horizon_value(sq_h)
     rows2 = []
-    # `itertuples` renames the column "in" -- it is a Python keyword -- and
-    # the squad frame carries `player_code`, not `code`.
+    # `itertuples` renames the column "in" -- it is a Python keyword.
     for _, r in T.iterrows():
-        o = squad[squad.name.eq(r["out"])]
+        o = sq_h[sq_h.name.eq(r["out"])]
         i = avail[avail.name.eq(r["in"]) & avail.team.eq(r["in_team"])]
         if o.empty or i.empty:
             continue
-        oc, ic = o.iloc[0]["player_code"], i.iloc[0]["player_code"]
-        if oc not in by_code.index or ic not in by_code.index:
+        inc = i.iloc[0:1].merge(wide, on="player_code", how="left").fillna(
+            {g: 0.0 for g in gws})
+        ns = pd.concat([sq_h[sq_h.id.ne(o.iloc[0].id)], inc],
+                       ignore_index=True)
+        v = horizon_value(ns)
+        if not np.isfinite(v):
             continue
         rows2.append({"out": r["out"], "in": r["in"],
-                      "gw_gain": r["gain"],
-                      "hz_gain": float(by_code.loc[ic, "hz_xp"]
-                                       - by_code.loc[oc, "hz_xp"])})
+                      "gw_gain": r["gain"], "hz_gain": v - hz_base})
     if not rows2:
         return
     H2 = pd.DataFrame(rows2).sort_values("hz_gain", ascending=False)
     print(H2.to_string(index=False, formatters={
         "gw_gain": "{:+.2f}".format, "hz_gain": "{:+.2f}".format}))
     best_hz, best_gw = H2.iloc[0], H2.sort_values("gw_gain", ascending=False).iloc[0]
-    print(f"\n  best over GW{gws[0]}-{gws[-1]}: {best_hz['out']} -> {best_hz['in']}"
+    print(f"\n  both columns are XI + captain; `hz_gain` sums them over "
+          f"GW{gws[0]}-{gws[-1]}")
+    print(f"  best over GW{gws[0]}-{gws[-1]}: {best_hz['out']} -> {best_hz['in']}"
           f"  ({best_hz['hz_gain']:+.2f} horizon, {best_hz['gw_gain']:+.2f} this week)")
     if best_hz["in"] != best_gw["in"] or best_hz["out"] != best_gw["out"]:
         print(f"  the ONE-WEEK answer was {best_gw['out']} -> {best_gw['in']}"

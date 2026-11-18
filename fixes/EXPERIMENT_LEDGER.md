@@ -5508,6 +5508,39 @@ not a football forecast, and belongs where the decision is made.
 held for several. Ask what horizon a number covers before using it for one
 that is longer.
 
+### Checked for induced bias, after the user asked
+
+The tool was built AFTER the conclusion was reached by hand, which is exactly
+the setup in which a tool confirms its author. Three checks:
+
+| risk | test | result |
+|---|---|---|
+| `UNKNOWN_WEEKS` chosen to fit | sweep 0..5 | **identical** -- Thiago has a hard DATE, so the parameter cannot touch him |
+| horizon length chosen to fit | sweep GW11-11 .. GW11-14 | the same transfer wins at **every** length |
+| candidate list restricted to section B's one-week top-10 | rank **all 2,185** legal transfers by horizon XI value | Thiago -> N.Jackson is **#1 of 2,185** |
+
+The conclusion survives all three. **The MAGNITUDE did not.**
+
+Section D first reported `hz_gain` as a PLAYER-LEVEL delta (N.Jackson's four
+gameweeks minus Thiago's) and printed it beside section B's `gw_gain`, which
+is an XI + CAPTAIN gain. Two different quantities in adjacent columns. For a
+BENCHED player the gap is large: selling Thiago reads **+15.04** as raw points
+and **+3.83** as a change in what the eleven actually score, because he was
+never in the eleven. The +15.04 overstated the case roughly fourfold and was
+the number quoted to the user.
+
+Fixed: `hz_gain` now sums best-XI + captain across the horizon, the same
+objective as section B. It reproduces the independent unrestricted search
+exactly (+3.83 both ways).
+
+The honest margin is also much tighter than first reported: the best transfer
+that does NOT sell Thiago is Barnes -> Gross at **+3.13**, so the real edge is
+**0.70**, not 15.
+
+**R62: a comparison column must be the same quantity as the one beside it.**
+The conclusion was right and the number was wrong by 4x, which is worse than
+being obviously wrong -- a plausible inflated figure is acted on.
+
 ---
 
 ---
