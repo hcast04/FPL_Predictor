@@ -24,7 +24,7 @@ import json, os, sys, urllib.request
 from pathlib import Path
 import numpy as np, pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fpl2 import config as C, optimise                               # noqa: E402
+from fpl2 import availability as av, config as C, optimise          # noqa: E402
 
 API = "https://fantasy.premierleague.com/api"
 HDR = {"User-Agent": "Mozilla/5.0"}
@@ -222,6 +222,87 @@ def main():
     print(f"  bench: {', '.join(nb.name)}  ({nb.xp.sum():.2f} xp)")
     print(f"  incoming {top['in']} -> "
           f"{'STARTS' if top['in'] in set(nxi.name) else 'BENCHED'}")
+
+    # ---- D. the same question over the HORIZON -----------------------------
+    #
+    # Sections A-C price one week, because `chance_of_playing_next_round` is a
+    # one-week field. A suspension is not. At GW11 of 2026-27 Thiago was
+    # "Suspended until 5 Dec" -- GW11, GW12 and GW13 -- and the projection
+    # carried him at 3.47 and 3.42 for two gameweeks he could not play. The
+    # one-week answer was Muharemovic -> Khusanov, worth +1.66 that week and
+    # +0.34 over four; selling the suspended player was worth about +18.
+    #
+    # So this section re-ranks the SAME candidate transfers with every
+    # gameweek's availability applied (`availability.horizon`). It does not
+    # replace sections A-C: the XI you field is still a one-week decision,
+    # and `UNKNOWN_WEEKS` is a judgement rather than a measurement.
+    import datetime as _dt
+    if pr.empty:
+        return
+    today = _dt.datetime.now(_dt.timezone.utc).date()
+    fut = [f for f in get(f"{API}/fixtures/")
+           if f.get("event") and target <= f["event"] <= target + 3]
+    if not fut:
+        return
+    fxr = []
+    for f in fut:
+        ko = _dt.datetime.fromisoformat(
+            f["kickoff_time"].replace("Z", "+00:00")).date()
+        for tid in (f["team_h"], f["team_a"]):
+            fxr.append({"gameweek": int(f["event"]), "team": tm[tid], "kickoff": ko})
+    FX = pd.DataFrame(fxr)
+    gws = sorted(FX["gameweek"].unique())
+    allp = (pr if pr.gameweek.nunique() > 1 else pd.read_pickle(proj_path))
+    allp = allp[allp.gameweek.isin(gws)]
+    base_xp = (allp.groupby(["player_code", "gameweek"], as_index=False)
+               .agg(xp=("xp", "mean")))
+    el_av = el.rename(columns={"code": "player_code"})[
+        ["player_code", "team", "status", "chance", "news"]]
+    H = av.horizon(el_av, FX, today)
+    hz = (base_xp.merge(H, on=["player_code", "gameweek"], how="left")
+          .assign(avail=lambda d: d["avail"].fillna(1.0)))
+    hz["adj"] = hz["xp"] * hz["avail"]
+    tot = hz.groupby("player_code", as_index=False).agg(
+        hz_xp=("adj", "sum"), raw=("xp", "sum"))
+    look = el.merge(tot, left_on="code", right_on="player_code", how="inner")
+    by_code = look.drop_duplicates("player_code").set_index("player_code")
+
+    print("\n" + "=" * 66)
+    print(f"D. OVER THE HORIZON GW{gws[0]}-{gws[-1]} (availability applied every week)")
+    print("=" * 66)
+    lost = look[(look.raw - look.hz_xp > 1.0) & look.id.isin(squad.id)]
+    if len(lost):
+        print("  YOUR players who lose points to unavailability beyond this week:")
+        for _, r in lost.sort_values("raw", ascending=False).iterrows():
+            print(f"   {r['name']:<16}{r['team']:<5} raw {r['raw']:5.2f} -> "
+                  f"{r['hz_xp']:5.2f}   {(r['news'] or '')[:40]}")
+        print()
+    rows2 = []
+    # `itertuples` renames the column "in" -- it is a Python keyword -- and
+    # the squad frame carries `player_code`, not `code`.
+    for _, r in T.iterrows():
+        o = squad[squad.name.eq(r["out"])]
+        i = avail[avail.name.eq(r["in"]) & avail.team.eq(r["in_team"])]
+        if o.empty or i.empty:
+            continue
+        oc, ic = o.iloc[0]["player_code"], i.iloc[0]["player_code"]
+        if oc not in by_code.index or ic not in by_code.index:
+            continue
+        rows2.append({"out": r["out"], "in": r["in"],
+                      "gw_gain": r["gain"],
+                      "hz_gain": float(by_code.loc[ic, "hz_xp"]
+                                       - by_code.loc[oc, "hz_xp"])})
+    if not rows2:
+        return
+    H2 = pd.DataFrame(rows2).sort_values("hz_gain", ascending=False)
+    print(H2.to_string(index=False, formatters={
+        "gw_gain": "{:+.2f}".format, "hz_gain": "{:+.2f}".format}))
+    best_hz, best_gw = H2.iloc[0], H2.sort_values("gw_gain", ascending=False).iloc[0]
+    print(f"\n  best over GW{gws[0]}-{gws[-1]}: {best_hz['out']} -> {best_hz['in']}"
+          f"  ({best_hz['hz_gain']:+.2f} horizon, {best_hz['gw_gain']:+.2f} this week)")
+    if best_hz["in"] != best_gw["in"] or best_hz["out"] != best_gw["out"]:
+        print(f"  the ONE-WEEK answer was {best_gw['out']} -> {best_gw['in']}"
+              f"  ({best_gw['hz_gain']:+.2f} horizon) -- they DISAGREE")
 
 
 if __name__ == "__main__":

@@ -5443,6 +5443,73 @@ weeks arrive ~3.9 times a season, 27 of 39 of them after GW20.
 
 ---
 
+## M36 — a suspension lasts three gameweeks; the tools priced one
+
+`chance_of_playing_next_round` is a SINGLE-WEEK field. Every tool here scaled
+by it and stopped, so an absence spanning several gameweeks was charged to one.
+
+At GW11 of 2026-27 Thiago (BRE) read **"Suspended until 5 Dec"**, covering
+GW11 (23 Nov), GW12 (28 Nov) and GW13 (2 Dec); he returns for GW14 (5 Dec).
+`plan_gw` zeroed him for GW11 and the projection carried him at **3.47 and
+3.42 for two gameweeks he could not play**. The consequence was not cosmetic:
+
+| transfer | GW11 | **GW11-14** |
+|---|---:|---:|
+| Muharemovic -> Khusanov (the one-week answer) | **+1.66** | **+0.34** |
+| Thiago -> N.Jackson | +1.15 | **+15.04** |
+
+The shipped recommendation was the one worth nothing over the horizon it
+would be held for. Same class as R55.
+
+### What is parsed, and what is a judgement
+
+`fpl2/fpl2/availability.py`. The `news` field is free text but its shapes are
+few and stable -- 198 players carried news on 2026-11-18:
+
+    Suspended until 5 Dec                      hard date
+    Hamstring injury - Expected back 2 Jan     hard date
+    Knee injury - Unknown return date          NO date (59 players, status i)
+    Ankle injury - 75% chance of playing       single-week doubt
+    Has joined Juventus on loan for the rest   gone
+
+A hard date and a departure are FACTS. **"Unknown return date" is genuinely
+unknown**: the API carries no news ARCHIVE, so how long such absences last
+cannot be measured from anything this project holds, and `UNKNOWN_WEEKS = 3`
+is a stated judgement, exposed as a parameter so the assumption is visible.
+It is deliberately conservative for a TRANSFER decision -- an injured player
+with no return date is a liability -- and is NOT a measurement.
+
+### Two traps in the parsing
+
+**A percentage chance is about THIS round only.** Carrying "75% chance of
+playing" four weeks forward would under-rate a player merely rated to
+recover. It applies at `weeks_ahead == 0` and not beyond.
+
+**A date already past is STALE NEWS, not next year.** "Expected back 31 Oct"
+still showing on 18 November must yield no constraint. The first version
+rolled the year forward unconditionally and turned it into an eleven-month
+absence; `_ROLL_FORWARD_DAYS = 180` now separates staleness from a genuine
+January return. Caught by its own test.
+
+### Scope, deliberately narrow
+
+Sections A-C of `plan_gw` are **unchanged and verified byte-identical** --
+the XI you field is still a one-week decision and the one-week availability
+rule is reproduced exactly at `weeks_ahead == 0` (its own negative control).
+The new section D re-ranks the SAME candidate transfers with every
+gameweek's availability applied, and prints explicitly when the one-week and
+horizon answers DISAGREE, which at GW11 they did.
+
+The model's raw xp is left raw. Availability is a fact about the calendar,
+not a football forecast, and belongs where the decision is made.
+
+**R61: a field named `..._next_round` prices one round.** Three defects now
+(M30, R55, M36) have come from a one-week quantity being used for a decision
+held for several. Ask what horizon a number covers before using it for one
+that is longer.
+
+---
+
 ---
 
 # Appendix — script index
