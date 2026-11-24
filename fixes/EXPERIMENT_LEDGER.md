@@ -5664,6 +5664,90 @@ mean reversion; only the fake-boundary comparison makes it readable.
 
 ---
 
+## S68 / O60 gate — the manager feature does NOT earn its place
+
+`fpl2/run_mgr_signal.py`. The user's hypothesis, and it was a good one:
+managers are more stable than clubs. A squad, a budget and a league position
+churn; an approach travels with the man. If so, manager identity carries
+information the club's own history does not -- and the place to look is the
+moment he ARRIVES somewhere new, when the club's recent form belongs to the
+previous regime.
+
+### The test
+
+For each (manager, club) spell, predict its first 8 gameweeks from two
+strictly-lagged priors: the CLUB's output before the spell began (any
+manager), and the MANAGER's output before it began at OTHER clubs.
+
+| outcome | predictor | r | n |
+|---|---|---:|---:|
+| goals scored | **the club before** | **0.470** | 117 |
+| goals scored | the manager elsewhere | 0.053 | 49 |
+| goals conceded | **the club before** | **0.284** | 117 |
+| goals conceded | the manager elsewhere | 0.160 | 49 |
+
+Controlling for the club, the manager adds nothing:
+
+| outcome | partial r | shuffled mean | sd | p |
+|---|---:|---:|---:|---:|
+| goals scored | -0.073 | -0.008 | 0.135 | **0.595** |
+| goals conceded | +0.020 | -0.010 | 0.152 | **0.920** |
+
+**The shuffle is the entry.** It keeps every spell and every club prior and
+moves only WHICH manager's history is attached. The true partial r sits
+squarely inside that null. Same construction as S29, same answer: scramble
+the identity and nothing changes, because the signal was never the
+identity's.
+
+This also explains S67.2 retrospectively. Pochettino's sides score well
+everywhere -- and so do the clubs that hire him. The per-manager table was
+always mostly a table of WHO HIRES WHOM, which is why it was published there
+as description and gated here.
+
+### Promoted clubs: a real gap, but a CLUB effect
+
+| group | spells | GF | GA |
+|---|---:|---:|---:|
+| arrived with a promoted club | 36 | 0.99 | 1.91 |
+| everyone else | 111 | 1.35 | 1.54 |
+
+Large and real -- and already visible to the model through the club's own
+rolling features. The partial-r test is where a MANAGER contribution would
+have appeared and it did not.
+
+**This is where it differs from S9.** There the source-league effect survived
+controlling for destination club: within the three promoted squads,
+Championship-sourced players ran at **0.713** of forecast against **0.884**
+for other sources. The manager equivalent leaves no such residual.
+
+### What this does NOT establish
+
+**n = 49** spells carry a usable manager prior, and the shuffle sd is 0.135
+to 0.152, so a partial r below about **0.27** could not have been seen. This
+is "not detectable at this sample size", not "proven zero".
+
+The constraint is structural, not fixable by effort: only **34 of 108**
+managers worked at two or more clubs across eleven seasons, and most of those
+moved once. Only more seasons would move it.
+
+### Standing
+
+**NOT ADDED.** It fails its own prior test before reaching the expensive
+decision gate, and R31 says a feature that cannot beat a shuffle on the
+component metric will not survive the season total. Seventh instance.
+
+The DATA stays. S67 found a real, placebo-controlled new-manager bounce
+(+0.29 goals scored, -0.38 conceded), and `mgr_days` / `mgr_match_no` are now
+available for the tenure question, which is a different claim from "manager
+identity predicts".
+
+**R65: a feature whose signal survives shuffling its own key is not that
+feature's signal.** S29 scrambled the opponent, S60 scrambled team style,
+S68 scrambled the manager; three of three came back at the null. Run the
+shuffle BEFORE building the feature, not after.
+
+---
+
 ---
 
 # Appendix — script index
@@ -5717,3 +5801,4 @@ mean reversion; only the fake-boundary comparison makes it readable.
 | `fpl2/run_freehit_policy.py` | Does a convex free-hit penalty win points? (S66) |
 | `fpl2/pull_managers.py` | Scrape every PL managerial spell (S67/O60) |
 | `fpl2/run_managers.py` | Do managers carry an attacking signature? Placebo-controlled (S67) |
+| `fpl2/run_mgr_signal.py` | Does manager identity predict beyond the club? Shuffle-controlled (S68) |
