@@ -35,14 +35,43 @@ MIN_CHANCE, MIN_GAIN = 75, 0.30
 def get(u):
     return json.load(urllib.request.urlopen(
         urllib.request.Request(u, headers=HDR), timeout=60))
+def last_played(boot, get_fn) -> int:
+    """
+    The last gameweek actually PLAYED, not the last marked `finished`.
+
+    FPL sets `finished` only after the final bonus check, which lands days
+    after the football. From Sunday evening until roughly Wednesday a played
+    gameweek reads `finished=False, is_current=True`, so `max(finished)`
+    returns the week BEFORE it -- and `entry/{id}/event/{gw}/picks/` then
+    returns the squad as it was before last week's transfers.
+
+    At GW12 of 2026-27 that handed the planner the GW10 squad: it still
+    contained Thiago, who had been sold in GW11, and a bank of GBP0.3m
+    instead of GBP0.9m. Every transfer suggestion was computed against a
+    squad the user had not owned for a week. The user spotted it -- "I don't
+    have Thiago though".
+
+    `run_live_chip` and `run_live_project` already did this correctly; these
+    two did not.
+    """
+    done = {e["id"] for e in boot["events"] if e.get("finished")}
+    for e in boot["events"]:
+        if e["id"] in done or not e.get("is_current"):
+            continue
+        fx = get_fn(f"{API}/fixtures/?event={e['id']}")
+        if fx and all(x.get("finished_provisional") for x in fx):
+            done.add(e["id"])
+    return max(done)
+
 
 
 def main():
     out = pd.read_pickle(C.cache("fpl2_live_chip_out.pkl"))
     boot = get(f"{API}/bootstrap-static/")
-    finished = sorted(e["id"] for e in boot["events"] if e.get("finished"))
     nxt = next(e for e in boot["events"] if e.get("is_next"))
-    picks = get(f"{API}/entry/{ENTRY}/event/{max(finished)}/picks/")
+    src = last_played(boot, get)
+    picks = get(f"{API}/entry/{ENTRY}/event/{src}/picks/")
+    print(f"squad read from GW{src} picks")
     bank = picks["entry_history"]["bank"] / 10.0
 
     el = pd.DataFrame([{

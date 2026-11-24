@@ -5543,6 +5543,127 @@ being obviously wrong -- a plausible inflated figure is acted on.
 
 ---
 
+## M37 — the planner read a squad the user had not owned for a week
+
+FPL sets `finished` only after the final bonus check, which lands DAYS after
+the football. From Sunday evening until roughly Wednesday a played gameweek
+reads `finished=False, is_current=True`, so
+
+    max(e["id"] for e in boot["events"] if e.get("finished"))
+
+returns the week BEFORE it, and `entry/{id}/event/{gw}/picks/` then returns
+the squad as it stood before last week's transfers.
+
+At GW12 of 2026-27 this handed `plan_gw` the **GW10** squad: it still
+contained Thiago, sold in GW11, and a bank of GBP0.3m instead of GBP0.9m.
+Every transfer suggestion was computed against a squad the user had not owned
+for a week, and the entire transfer table was dominated by selling a player he
+did not have. **The user caught it: "I dont have Thiago though".**
+
+`run_live_chip` and `run_live_project` were already correct -- they treat a
+week whose fixtures are all `finished_provisional` as played. `plan_gw` and
+`build_wildcard_now` were not. Both now share `last_played(boot, get)` and
+`plan_gw` prints `squad read from GW{n} picks` so the source is visible.
+
+**Fourth tool in the M30 family**, and the first where the defect was in WHICH
+SQUAD rather than which gameweek's fixtures.
+
+**R63: `finished` is a bonus-check flag, not a "was it played" flag.** Any
+code asking "what is the latest completed gameweek" must accept
+`finished_provisional`, or it is a week behind for three days out of seven.
+
+---
+
+## S67 / O60 — manager data, at last; and a new manager IS worth something
+
+O60 has sat unstarted since 2026-10-23 for want of appointment dates. The
+user asked for them, retroactively, indexed by manager so questions like
+"Pochettino managed Chelsea and now Manchester United -- more or less
+attacking return?" can be asked.
+
+### The log
+
+`fpl2/pull_managers.py` scrapes Wikipedia's "List of Premier League managers":
+**521 spells, 305 managers, 51 clubs, 1975-2026**, 122 caretakers flagged, 20
+open spells -- which matches the 20 sitting managers, a free sanity check. It
+is the only source found covering all eleven seasons AND the live one: on
+2026-11-24 it already carried Pochettino at Manchester United from 18
+November, six days old.
+
+`fpl2/fpl2/managers.py` joins it onto the panel on CLUB NAME and DATE and
+reaches **95.2%** of club-gameweeks -- **100% for 2026-27**, 99%+ for
+2019-26. The shortfall is entirely the nine `Team NN` clubs the public
+exports never named (S46); they are reported unresolved rather than guessed.
+
+The alias table is EXPLICIT, with no similarity threshold. M25 matched De Gea
+to David Raya on a shared first name and coverage ROSE while quality fell, so
+here a club either resolves or is named as unresolved.
+
+Two defects found building it, both silent:
+
+  * Wikipedia footnotes a date as `30 August 2022[a]` -- LETTER markers, not
+    the numeric ones stripped from names. `errors="coerce"` dropped **11
+    spells**, among them Solskjaer at Manchester United and De Zerbi at
+    Brighton.
+  * the panel writes both `Coventry` and `Coventry City` depending on season,
+    and aliasing only the short form dropped BOTH 2026-27 promoted clubs.
+
+### Pochettino, which is what was asked
+
+| club | season | GF | league | GA | league |
+|---|---|---:|---:|---:|---:|
+| Tottenham | 2016-17 | **2.27** | 1.51 | **0.70** | 1.49 |
+| Tottenham | 2017-18 | **2.00** | 1.44 | **1.03** | 1.42 |
+| Tottenham | 2018-19 | **1.83** | 1.48 | **1.08** | 1.39 |
+| Tottenham | 2019-20 | 1.42 | 1.33 | 1.42 | 1.40 |
+| Chelsea | 2023-24 | **2.11** | 1.63 | 1.75 | 1.69 |
+
+**Attacking is a signature; defending is not.** Above the league average for
+goals scored at every club, 1.99/game over 157 club-gameweeks and three
+clubs, fourth of 71 qualifying managers. Defensively he ranged from
+exceptional (0.70 at early Spurs) to WORSE than average (1.75 at Chelsea).
+The solidity was a Spurs thing.
+
+### The measurement, and its control
+
+A league table of goals-per-game by manager measures **which clubs hired
+them**, so that table is published as description only. The measurement is
+within-club, before and after a mid-season change, clustered on club:
+
+| | real | t | placebo | t | real - placebo |
+|---|---:|---:|---:|---:|---:|
+| goals scored | **+0.290** | 4.66 | +0.010 | 0.17 | **+0.280** |
+| goals conceded | **-0.379** | -4.98 | -0.011 | -0.18 | **-0.368** |
+| xG for | +0.062 | 1.68 | +0.036 | 1.16 | +0.026 |
+| xG against | +0.002 | 0.03 | +0.061 | 1.58 | -0.059 |
+
+91 real changes, G = 22 clubs.
+
+**The placebo is the entry.** Clubs sack managers after bad runs, so the
+"before" window is selected for being poor and mean reversion alone predicts
+improvement. The control places FAKE boundaries mid-spell where nothing
+happened: it comes out at +0.010 and -0.011, essentially zero. The real
+effect is not regression to the mean.
+
+**But the xG rows barely move.** Goals shift sharply while xG does not
+(+0.062, t 1.68). Either the bounce is finishing variance and will decay, or
+managers change outcomes through something xG does not capture. These data
+cannot separate those. Note also that expected stats exist only from 2022-23
+(with 2022-23 GW1-32 masked), so the xG tests run on far less data than the
+goals tests.
+
+**NOT YET A MODEL FEATURE.** This is a measured team-level effect, and S29
+found opponent identity worth zero for RANKING while S60 found team style
+worth +0.1 against a shuffle. A quantity can be real at team level and worth
+nothing once it has to reorder 600 players. Whether a manager feature earns
+its place is a separate gate.
+
+**R64: when a treatment is assigned by bad outcomes, the placebo is the
+experiment.** The before/after number alone (+0.29) is indistinguishable from
+mean reversion; only the fake-boundary comparison makes it readable.
+
+---
+
 ---
 
 # Appendix — script index
@@ -5594,3 +5715,5 @@ being obviously wrong -- a plausible inflated figure is acted on.
 | `fpl2/pull_understat.py` | Re-scrape Understat; distinguishes an outage from a scraper bug (M32) |
 | `fpl2/run_freehit.py` | When is a free hit worth playing? Is BLANK_WEIGHT inert? (S65/M35) |
 | `fpl2/run_freehit_policy.py` | Does a convex free-hit penalty win points? (S66) |
+| `fpl2/pull_managers.py` | Scrape every PL managerial spell (S67/O60) |
+| `fpl2/run_managers.py` | Do managers carry an attacking signature? Placebo-controlled (S67) |
